@@ -791,7 +791,8 @@
             this.selectedCandy = null;
             this.candies = [];
             this.cupCandies = [0, 0, 0, 0];
-            this.animatingCandy = null;
+            this.animatingCandyIndex = null;
+            this.animatingTargetCup = null;
             this.fallingProgress = 0;
             this.init();
         }
@@ -835,7 +836,7 @@
             // Check candy clicks
             for (let i = 0; i < this.candies.length; i++) {
                 const candy = this.candies[i];
-                if (candy.matched || this.animatingCandy !== null) continue;
+                if (candy.matched || this.animatingCandyIndex !== null) continue;
                 const dist = Math.hypot(pos.x - candy.x, pos.y - candy.y);
                 if (dist < 30) {
                     this.audio.playSound('select');
@@ -854,7 +855,8 @@
                         const candy = this.candies[this.selectedCandy];
                         if (candy.colorIndex === i) {
                             this.audio.playSound('success');
-                            this.animatingCandy = { ...candy, targetCup: i };
+                            this.animatingCandyIndex = this.selectedCandy;
+                            this.animatingTargetCup = i;
                             this.fallingProgress = 0;
                             this.selectedCandy = null;
                         } else {
@@ -867,20 +869,23 @@
         }
 
         update() {
-            if (this.animatingCandy) {
+            if (this.animatingCandyIndex !== null) {
                 this.fallingProgress += 0.03;
                 if (this.fallingProgress >= 1) {
-                    this.cupCandies[this.animatingCandy.targetCup]++;
-                    this.candies[this.candies.indexOf(this.animatingCandy)].matched = true;
+                    const candyIndex = this.animatingCandyIndex;
+                    const targetCup = this.animatingTargetCup;
+                    this.cupCandies[targetCup]++;
+                    this.candies[candyIndex].matched = true;
                     // Particles
                     for (let j = 0; j < 10; j++) {
                         this.particles.push(new Particle(
-                            this.animatingCandy.x,
-                            450 - this.cupCandies[this.animatingCandy.targetCup] * 10,
-                            CUP_COLORS[this.animatingCandy.targetCup]
+                            this.candies[candyIndex].x,
+                            450 - this.cupCandies[targetCup] * 10,
+                            CUP_COLORS[targetCup]
                         ));
                     }
-                    this.animatingCandy = null;
+                    this.animatingCandyIndex = null;
+                    this.animatingTargetCup = null;
 
                     // Check win
                     if (this.candies.every(c => c.matched)) {
@@ -957,14 +962,15 @@
             });
 
             // Falling candy animation
-            if (this.animatingCandy) {
+            if (this.animatingCandyIndex !== null) {
                 const p = this.fallingProgress;
+                const candy = this.candies[this.animatingCandyIndex];
                 const startY = 80;
-                const endY = 450 - this.cupCandies[this.animatingCandy.targetCup] * 10;
+                const endY = 450 - this.cupCandies[this.animatingTargetCup] * 10;
                 const y = startY + (endY - startY) * this.easeInBounce(p);
-                const x = this.animatingCandy.x;
+                const x = candy.x;
 
-                ctx.fillStyle = CANDY_COLORS[this.animatingCandy.colorIndex];
+                ctx.fillStyle = CANDY_COLORS[candy.colorIndex];
                 ctx.beginPath();
                 ctx.arc(x, y, 25, 0, Math.PI * 2);
                 ctx.fill();
