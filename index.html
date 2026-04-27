@@ -594,6 +594,7 @@
             this.shapes = this.shuffle([...SHAPES]);
             this.gridCells = this.shuffle([...Array(6).keys()]);
             this.selectedShape = null;
+            this.selectedShapeIndex = null;
             this.matchedShapes = [];
             this.particles = [];
 
@@ -633,7 +634,8 @@
                 const dist = Math.hypot(pos.x - sx, pos.y - sy);
                 if (dist < 40 && !this.matchedShapes.includes(i)) {
                     this.audio.playSound('select');
-                    this.selectedShape = i;
+                    this.selectedShape = this.shapes[i]; // Store shape TYPE, not position
+                    this.selectedShapeIndex = i; // Also track position for matchedShapes check
                     return;
                 }
             }
@@ -645,10 +647,11 @@
                     const ty = 380 + Math.floor(i / 3) * 100;
                     const dist = Math.hypot(pos.x - tx, pos.y - ty);
                     if (dist < 40) {
-                        if (this.gridCells[i] === this.selectedShape) {
+                        // Match: selected shape type === target slot's expected shape type
+                        if (this.selectedShape === SHAPES[this.gridCells[i]]) {
                             this.audio.playSound('success');
-                            this.matchedShapes.push(this.selectedShape);
-                            this.animatingShape = { from: this.selectedShape, to: i };
+                            this.matchedShapes.push(this.selectedShapeIndex);
+                            this.animatingShape = { from: this.selectedShapeIndex, to: i };
                             this.animProgress = 0;
                             // Spawn particles
                             for (let j = 0; j < 15; j++) {
@@ -704,7 +707,7 @@
                 const x = 120 + (i % 3) * 200;
                 const y = 150 + Math.floor(i / 3) * 100;
                 const isMatched = this.matchedShapes.includes(i);
-                const isSelected = this.selectedShape === i;
+                const isSelected = this.selectedShapeIndex === i;
 
                 ctx.save();
                 if (isSelected) {
