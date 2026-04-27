@@ -596,6 +596,7 @@
             this.selectedShape = null;
             this.selectedShapeIndex = null;
             this.matchedShapes = [];
+            this.slotContents = [-1, -1, -1, -1, -1, -1]; // Track which source shape is in each slot
             this.particles = [];
 
             this.canvas.onclick = (e) => this.handleClick(e);
@@ -651,6 +652,7 @@
                         if (this.selectedShape === SHAPES[this.gridCells[i]]) {
                             this.audio.playSound('success');
                             this.matchedShapes.push(this.selectedShapeIndex);
+                            this.slotContents[i] = this.selectedShapeIndex; // Record filled slot
                             this.animatingShape = { from: this.selectedShapeIndex, to: i };
                             this.animProgress = 0;
                             // Spawn particles
@@ -730,21 +732,22 @@
                 const x = 120 + (i % 3) * 200;
                 const y = 380 + Math.floor(i / 3) * 100;
                 const hasShape = this.animatingShape && this.animatingShape.to === i;
-
-                // Empty slot outline
-                ctx.strokeStyle = '#AAA';
-                ctx.lineWidth = 3;
-                ctx.setLineDash([8, 4]);
-                ctx.beginPath();
-                ctx.arc(x, y, 40, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.setLineDash([]);
+                const filledShapeIndex = this.slotContents[i];
 
                 if (hasShape) {
+                    // Animating shape
                     const progress = this.animProgress;
                     const fromShape = this.shapes[this.animatingShape.from];
                     const color = shapeColors[this.animatingShape.from];
                     drawShape(ctx, fromShape, x, y, 60 * (1 - progress * 0.3), color);
+                } else if (filledShapeIndex >= 0) {
+                    // Filled slot - show colored shape
+                    const shapeType = this.shapes[filledShapeIndex];
+                    drawShape(ctx, shapeType, x, y, 50, shapeColors[filledShapeIndex], false);
+                } else {
+                    // Empty slot - show expected shape outline in gray
+                    const expectedShape = SHAPES[this.gridCells[i]];
+                    drawShape(ctx, expectedShape, x, y, 50, '#CCC', false);
                 }
             }
 
