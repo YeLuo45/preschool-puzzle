@@ -192,6 +192,211 @@
         }
     }
 
+    // ==================== Tool Registry ====================
+    class ToolRegistry {
+        constructor() {
+            this.items = new Map();
+        }
+        register(id, item) { this.items.set(id, item); }
+        get(id) { return this.items.get(id); }
+        list() { return Array.from(this.items.values()); }
+        has(id) { return this.items.has(id); }
+    }
+
+    const ITEM_DEFS = [
+        { id: 'shape_hint', name: '形状提示', desc: '显示目标形状轮廓', cost: 2, game: 'shape', effect: 'hint' },
+        { id: 'time_pause', name: '时间暂停', desc: '本关暂停倒计时', cost: 3, game: 'shape', effect: 'pause' },
+        { id: 'color_magnifier', name: '颜色放大镜', desc: '高亮同色糖果', cost: 2, game: 'color', effect: 'highlight' },
+        { id: 'sort_assist', name: '排序助手', desc: '自动找到匹配对', cost: 3, game: 'color', effect: 'assist' },
+        { id: 'map_fragment', name: '地图碎片', desc: '显示路径3步', cost: 2, game: 'maze', effect: 'path' },
+        { id: 'wall_soften', name: '穿墙术', desc: '穿墙一次', cost: 3, game: 'maze', effect: 'phase' },
+    ];
+
+    const itemRegistry = new ToolRegistry();
+    ITEM_DEFS.forEach(item => itemRegistry.register(item.id, item));
+
+    // ==================== Star Manager ====================
+    class StarManager {
+        constructor() {
+            this.key = 'preschool_puzzle_stars';
+            this.invKey = 'preschool_puzzle_inventory';
+        }
+        getStars() {
+            try { return parseInt(localStorage.getItem(this.key) || '0'); } catch { return 0; }
+        }
+        addStars(count) {
+            const cur = this.getStars();
+            localStorage.setItem(this.key, String(cur + count));
+            return this.getStars();
+        }
+        spendStars(count) {
+            const cur = this.getStars();
+            if (cur < count) return false;
+            localStorage.setItem(this.key, String(cur - count));
+            return true;
+        }
+        getInventory() {
+            try { return JSON.parse(localStorage.getItem(this.invKey) || '{}'); } catch { return {}; }
+        }
+        addItem(itemId) {
+            const inv = this.getInventory();
+            inv[itemId] = (inv[itemId] || 0) + 1;
+            localStorage.setItem(this.invKey, JSON.stringify(inv));
+        }
+        useItem(itemId) {
+            const inv = this.getInventory();
+            if (!inv[itemId] || inv[itemId] <= 0) return false;
+            inv[itemId]--;
+            if (inv[itemId] <= 0) delete inv[itemId];
+            localStorage.setItem(this.invKey, JSON.stringify(inv));
+            return true;
+        }
+        hasItem(itemId) {
+            const inv = this.getInventory();
+            return (inv[itemId] || 0) > 0;
+        }
+        getItemCount(itemId) {
+            return this.getInventory()[itemId] || 0;
+        }
+    }
+
+    // ==================== Item Shop ====================
+    class ItemShop {
+        constructor(canvas, ctx, audio, starManager, onClose) {
+            this.canvas = canvas;
+            this.ctx = ctx;
+            this.audio = audio;
+            this.starManager = starManager;
+            this.onClose = onClose;
+            this.buttons = [];
+            this.buyResults = [];
+            this.resultTimer = 0;
+            this.initButtons();
+            canvas.addEventListener('click', e => this.handleClick(e));
+        }
+        initButtons() {
+            const items = itemRegistry.list();
+            this.buttons = [];
+            let y = 120;
+            items.forEach((item, i) => {
+                const owned = this.starManager.getItemCount(item.id);
+                const canAfford = this.starManager.getStars() >= item.cost;
+                this.buttons.push({
+                    x: 400, y: y, width: 360, height: 60,
+                    item: item, owned: owned, canAfford: canAfford
+                });
+                y += 70;
+            });
+            this.backBtn = { x: 400, y: 560, width: 120, height: 44 };
+        }
+        handleClick(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (800 / rect.width);
+            const y = (e.clientY - rect.top) * (600 / rect.height);
+            // Back button
+            if (x >= this.backBtn.x - 60 && x <= this.backBtn.x + 60 &&
+                y >= this.backBtn.y - 22 && y <= this.backBtn.y + 22) {
+                this.audio.playSound('select');
+                this.onClose();
+                return;
+            }
+            // Item buttons
+            for (const btn of this.buttons) {
+                if (x >= btn.x - btn.width/2 && x <= btn.x + btn.width/2 &&
+                    y >= btn.y - btn.height/2 && y <= btn.y + btn.height/2) {
+                    if (!btn.owned && btn.canAfford) {
+                        if (this.starManager.spendStars(btn.item.cost)) {
+                            this.starManager.addItem(btn.item.id);
+                            btn.owned = true;
+                            btn.canAfford = this.starManager.getStars() >= btn.item.cost;
+                            this.audio.playSound('success');
+                            this.buyResults.push({ text: `获得 ${btn.item.name}!`, color: '#4CAF50', y: btn.y });
+                            this.resultTimer = 60;
+                        } else {
+                            this.audio.playSound('error');
+                        }
+                    } else if (!btn.owned) {
+                        this.audio.playSound('error');
+                    }
+                    return;
+                }
+            }
+        }
+        update() {
+            if (this.resultTimer > 0) this.resultTimer--;
+        }
+        draw() {
+            const ctx = this.ctx;
+            ctx.clearRect(0, 0, 800, 600);
+            // BG
+            ctx.fillStyle = '#FFF8E7';
+            ctx.fillRect(0, 0, 800, 600);
+            // Title
+            ctx.fillStyle = COLORS.text;
+            ctx.font = 'bold 32px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('道具商店', 400, 60);
+            // Stars balance
+            const stars = this.starManager.getStars();
+            ctx.font = '22px Arial';
+            ctx.fillText(`★ 当前星星: ${stars}`, 400, 95);
+            // Items
+            this.buttons.forEach(btn => {
+                const item = btn.item;
+                const owned = this.starManager.getItemCount(item.id);
+                // BG
+                ctx.fillStyle = owned ? '#E8F5E9' : (btn.canAfford ? '#FFF' : '#F5F5F5');
+                ctx.beginPath();
+                ctx.roundRect(btn.x - btn.width/2, btn.y - btn.height/2, btn.width, btn.height, 12);
+                ctx.fill();
+                ctx.strokeStyle = owned ? '#4CAF50' : (btn.canAfford ? COLORS.primary : '#CCC');
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                // Name
+                ctx.fillStyle = COLORS.text;
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(item.name, btn.x - 160, btn.y - 8);
+                // Desc
+                ctx.font = '16px Arial';
+                ctx.fillStyle = '#888';
+                ctx.fillText(item.desc, btn.x - 160, btn.y + 18);
+                // Cost / owned
+                ctx.textAlign = 'right';
+                if (owned) {
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.font = 'bold 18px Arial';
+                    ctx.fillText(`已拥有 ×${owned}`, btn.x + 160, btn.y + 5);
+                } else {
+                    ctx.fillStyle = btn.canAfford ? '#FFB347' : '#E57373';
+                    ctx.font = 'bold 18px Arial';
+                    ctx.fillText(`★ ${item.cost}`, btn.x + 160, btn.y + 5);
+                }
+            });
+            // Back btn
+            ctx.fillStyle = COLORS.primary;
+            ctx.beginPath();
+            ctx.roundRect(this.backBtn.x - 60, this.backBtn.y - 22, 120, 44, 10);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('返回', this.backBtn.x, this.backBtn.y + 6);
+            // Buy results
+            if (this.resultTimer > 0) {
+                this.buyResults = this.buyResults.filter(r => {
+                    ctx.globalAlpha = this.resultTimer / 60;
+                    ctx.fillStyle = r.color;
+                    ctx.font = 'bold 20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(r.text, 400, r.y - (60 - this.resultTimer) * 0.5);
+                    ctx.globalAlpha = 1;
+                    return this.resultTimer > 0;
+                });
+            }
+        }
+    }
+
     // ==================== Save Manager ====================
     class SaveManager {
         constructor() {
@@ -317,12 +522,14 @@
 
     // ==================== Home Screen ====================
     class HomeScreen {
-        constructor(canvas, audio, saveManager, onSelectGame) {
+        constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
+            this.starManager = starManager;
             this.onSelectGame = onSelectGame;
+            this.onOpenShop = onOpenShop;
             this.audioInitialized = false;
             this.games = [
                 { id: 'shape', name: '形状匹配', icon: 'shape' },
@@ -333,6 +540,7 @@
             this.hoveredIndex = -1;
             this.scale = 1;
             this.particles = [];
+            this.shopHovered = false;
             this.init();
         }
 
@@ -367,6 +575,12 @@
 
         handleClick(e) {
             const pos = this.getMousePos(e);
+            // Shop button (top right)
+            if (pos.x >= 680 && pos.x <= 780 && pos.y >= 20 && pos.y <= 70) {
+                this.audio.playSound('select');
+                this.onOpenShop();
+                return;
+            }
             for (let i = 0; i < this.buttons.length; i++) {
                 const btn = this.buttons[i];
                 if (pos.x >= btn.x - btn.width/2 && pos.x <= btn.x + btn.width/2 &&
@@ -385,6 +599,8 @@
 
         handleMove(e) {
             const pos = this.getMousePos(e);
+            // Shop button hover
+            this.shopHovered = pos.x >= 680 && pos.x <= 780 && pos.y >= 20 && pos.y <= 70;
             let found = -1;
             for (let i = 0; i < this.buttons.length; i++) {
                 const btn = this.buttons[i];
@@ -393,7 +609,7 @@
                 if (btn.hovered) found = i;
             }
             this.hoveredIndex = found;
-            this.canvas.style.cursor = found >= 0 ? 'pointer' : 'default';
+            this.canvas.style.cursor = (this.shopHovered || found >= 0) ? 'pointer' : 'default';
         }
 
         drawBackground() {
@@ -412,6 +628,22 @@
             ctx.font = 'bold 42px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('幼儿益智解谜游戏', 400, 120);
+
+            // Draw stars balance (top right)
+            const stars = this.starManager.getStars();
+            ctx.fillStyle = '#FFB347';
+            ctx.font = 'bold 22px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`★ ${stars}`, 730, 52);
+
+            // Shop button (top right)
+            ctx.fillStyle = this.shopHovered ? '#E68A00' : COLORS.primary;
+            ctx.beginPath();
+            ctx.roundRect(680, 20, 100, 50, 12);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText('商店', 730, 52);
 
             // Draw stars
             ctx.fillStyle = '#FFD700';
@@ -1503,10 +1735,12 @@
             this.ctx = this.canvas.getContext('2d');
             this.audio = new AudioManager();
             this.saveManager = new SaveManager();
+            this.starManager = new StarManager();
             this.currentScreen = 'home';
             this.currentGame = null;
             this.victoryModal = null;
             this.homeScreen = null;
+            this.itemShop = null;
 
             this.init();
         }
@@ -1526,17 +1760,27 @@
             this.currentScreen = 'home';
             this.currentGame = null;
             this.victoryModal = null;
+            this.itemShop = null;
             this.homeScreen = new HomeScreen(
                 this.canvas,
                 this.audio,
                 this.saveManager,
-                (gameId) => this.startGame(gameId)
+                this.starManager,
+                (gameId) => this.startGame(gameId),
+                () => this.openShop()
             );
+        }
+
+        openShop() {
+            this.currentScreen = 'shop';
+            this.homeScreen = null;
+            this.itemShop = new ItemShop(this.canvas, this.ctx, this.audio, this.starManager, () => this.showHome());
         }
 
         startGame(gameId) {
             this.currentScreen = 'game';
             this.currentGame = null;
+            this.itemShop = null;
 
             switch(gameId) {
                 case 'shape':
@@ -1570,7 +1814,11 @@
             }
         }
 
-        showVictory() {
+showVictory() {
+            // Award star on first completion
+            if (!this.saveManager.isCompleted(this.currentGame ? 'shape' : this.currentGame ? 'color' : 'maze')) {
+                this.starManager.addStars(1);
+            }
             this.victoryModal = new VictoryModal(
                 this.ctx,
                 () => this.replayGame(),
@@ -1589,6 +1837,10 @@
             const rect = this.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (800 / rect.width);
             const y = (e.clientY - rect.top) * (600 / rect.height);
+
+            if (this.itemShop) {
+                return;
+            }
 
             if (this.victoryModal) {
                 const action = this.victoryModal.handleClick(x, y);
@@ -1613,6 +1865,9 @@
             if (this.victoryModal) {
                 this.victoryModal.update();
             }
+            if (this.itemShop) {
+                this.itemShop.update();
+            }
 
             // Draw
             this.ctx.clearRect(0, 0, 800, 600);
@@ -1625,6 +1880,9 @@
             }
             if (this.victoryModal) {
                 this.victoryModal.draw();
+            }
+            if (this.itemShop) {
+                this.itemShop.draw();
             }
 
             requestAnimationFrame(() => this.gameLoop());
