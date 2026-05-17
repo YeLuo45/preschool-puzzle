@@ -811,11 +811,12 @@
 
     // ==================== Shape Match Game ====================
     class ShapeMatchGame {
-        constructor(canvas, audio, saveManager, onBack, onComplete) {
+        constructor(canvas, audio, saveManager, starManager, onBack, onComplete) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
+            this.starManager = starManager;
             this.onBack = onBack;
             this.onComplete = onComplete;
             this.particles = [];
@@ -825,19 +826,58 @@
             this.animProgress = 0;
             this.shapes = [];
             this.gridCells = [];
+            // Item effects
+            this.hintActive = false;
+            this.hintTimer = 0;
+            this.paused = false;
+            // Item buttons
+            this.itemButtons = [];
             this.init();
         }
 
-        init() {
+init() {
             this.shapes = this.shuffle([...SHAPES]);
             this.gridCells = this.shuffle([...Array(6).keys()]);
             this.selectedShape = null;
             this.selectedShapeIndex = null;
             this.matchedShapes = [];
-            this.slotContents = [-1, -1, -1, -1, -1, -1]; // Track which source shape is in each slot
+            this.slotContents = [-1, -1, -1, -1, -1, -1];
             this.particles = [];
+            this.hintActive = false;
+            this.hintTimer = 0;
+            this.paused = false;
+            this.setupItemButtons();
 
             this.canvas.onclick = (e) => this.handleClick(e);
+        }
+
+        setupItemButtons() {
+            this.itemButtons = [];
+            const items = [
+                { id: 'shape_hint', label: '💡', x: 720, y: 30 },
+                { id: 'time_pause', label: '⏸', x: 770, y: 30 }
+            ];
+            items.forEach(item => {
+                const count = this.starManager.getItemCount(item.id);
+                if (count > 0) {
+                    this.itemButtons.push({ ...item, count });
+                }
+            });
+        }
+
+        useItem(itemId) {
+            if (!this.starManager.hasItem(itemId)) return false;
+            this.starManager.useItem(itemId);
+            if (itemId === 'shape_hint') {
+                this.hintActive = true;
+                this.hintTimer = 300;
+                this.audio.playSound('select');
+            } else if (itemId === 'time_pause') {
+                this.paused = !this.paused;
+                this.audio.playSound('select');
+            }
+            this.setupItemButtons();
+            return true;
         }
 
         shuffle(arr) {
@@ -858,6 +898,16 @@
 
         handleClick(e) {
             const pos = this.getMousePos(e);
+
+            // Check item buttons
+            for (const btn of this.itemButtons) {
+                const dx = pos.x - btn.x;
+                const dy = pos.y - btn.y;
+                if (Math.abs(dx) < 25 && Math.abs(dy) < 20) {
+                    this.useItem(btn.id);
+                    return;
+                }
+            }
 
             // Check back button
             if (pos.x < 70 && pos.y < 50) {
@@ -921,6 +971,10 @@
                     this.animatingShape = null;
                 }
             }
+            if (this.hintActive) {
+                this.hintTimer--;
+                if (this.hintTimer <= 0) this.hintActive = false;
+            }
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
@@ -931,6 +985,21 @@
             const ctx = this.ctx;
             ctx.fillStyle = COLORS.background;
             ctx.fillRect(0, 0, 800, 600);
+
+            // Item buttons (top right)
+            this.itemButtons.forEach(btn => {
+                ctx.fillStyle = COLORS.primary;
+                ctx.beginPath();
+                ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                ctx.fill();
+                ctx.fillStyle = '#FFF';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(btn.label, btn.x, btn.y + 6);
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
+            });
 
             // Title
             ctx.fillStyle = COLORS.text;
@@ -986,6 +1055,18 @@
                     // Empty slot - show expected shape outline in gray
                     const expectedShape = SHAPES[this.gridCells[i]];
                     drawShape(ctx, expectedShape, x, y, 50, '#CCC', false);
+                    // Hint effect: dashed glow
+                    if (this.hintActive) {
+                        ctx.save();
+                        ctx.strokeStyle = '#FFD700';
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([5, 5]);
+                        ctx.beginPath();
+                        ctx.arc(x, y, 35, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                        ctx.restore();
+                    }
                 }
             }
 
@@ -1018,11 +1099,12 @@
 
     // ==================== Color Sort Game ====================
     class ColorSortGame {
-        constructor(canvas, audio, saveManager, onBack, onComplete) {
+        constructor(canvas, audio, saveManager, starManager, onBack, onComplete) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
+            this.starManager = starManager;
             this.onBack = onBack;
             this.onComplete = onComplete;
             this.particles = [];
@@ -1032,6 +1114,12 @@
             this.animatingCandyIndex = null;
             this.animatingTargetCup = null;
             this.fallingProgress = 0;
+            // Item effects
+            this.highlightColor = null;
+            this.highlightTimer = 0;
+            this.assistTarget = null;
+            this.assistTimer = 0;
+            this.itemButtons = [];
             this.init();
         }
 
@@ -1050,7 +1138,57 @@
             this.selectedCandy = null;
             this.cupCandies = [0, 0, 0, 0];
             this.particles = [];
+            this.highlightColor = null;
+            this.highlightTimer = 0;
+            this.assistTarget = null;
+            this.assistTimer = 0;
+            this.setupItemButtons();
             this.canvas.onclick = (e) => this.handleClick(e);
+        }
+
+        setupItemButtons() {
+            this.itemButtons = [];
+            const items = [
+                { id: 'color_magnifier', label: '🔍', x: 720, y: 30 },
+                { id: 'sort_assist', label: '✨', x: 770, y: 30 }
+            ];
+            items.forEach(item => {
+                const count = this.starManager.getItemCount(item.id);
+                if (count > 0) {
+                    this.itemButtons.push({ ...item, count });
+                }
+            });
+        }
+
+        useItem(itemId) {
+            if (!this.starManager.hasItem(itemId)) return false;
+            this.starManager.useItem(itemId);
+            if (itemId === 'color_magnifier') {
+                if (this.selectedCandy !== null) {
+                    this.highlightColor = this.candies[this.selectedCandy].colorIndex;
+                    this.highlightTimer = 120;
+                }
+                this.audio.playSound('select');
+            } else if (itemId === 'sort_assist') {
+                // Find first matching pair
+                for (let i = 0; i < this.candies.length; i++) {
+                    if (this.candies[i].matched) continue;
+                    for (let j = i + 1; j < this.candies.length; j++) {
+                        if (this.candies[j].matched) continue;
+                        if (this.candies[i].colorIndex === this.candies[j].colorIndex) {
+                            this.assistTarget = [i, j];
+                            this.assistTimer = 180;
+                            this.audio.playSound('success');
+                            this.setupItemButtons();
+                            return true;
+                        }
+                    }
+                }
+                this.starManager.addItem(itemId); // refund if no pair
+                return false;
+            }
+            this.setupItemButtons();
+            return true;
         }
 
         getMousePos(e) {
@@ -1063,6 +1201,16 @@
 
         handleClick(e) {
             const pos = this.getMousePos(e);
+
+            // Check item buttons
+            for (const btn of this.itemButtons) {
+                const dx = pos.x - btn.x;
+                const dy = pos.y - btn.y;
+                if (Math.abs(dx) < 25 && Math.abs(dy) < 20) {
+                    this.useItem(btn.id);
+                    return;
+                }
+            }
 
             // Back button
             if (pos.x < 70 && pos.y < 50) {
@@ -1135,6 +1283,14 @@
                     }
                 }
             }
+            if (this.highlightColor !== null) {
+                this.highlightTimer--;
+                if (this.highlightTimer <= 0) this.highlightColor = null;
+            }
+            if (this.assistTarget !== null) {
+                this.assistTimer--;
+                if (this.assistTimer <= 0) this.assistTarget = null;
+            }
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
@@ -1145,6 +1301,21 @@
             const ctx = this.ctx;
             ctx.fillStyle = COLORS.background;
             ctx.fillRect(0, 0, 800, 600);
+
+            // Item buttons (top right)
+            this.itemButtons.forEach(btn => {
+                ctx.fillStyle = COLORS.primary;
+                ctx.beginPath();
+                ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                ctx.fill();
+                ctx.fillStyle = '#FFF';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(btn.label, btn.x, btn.y + 6);
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
+            });
 
             // Title
             ctx.fillStyle = COLORS.text;
@@ -1197,6 +1368,34 @@
                 ctx.fill();
 
                 ctx.restore();
+
+                // Highlight effect for color_magnifier
+                if (this.highlightColor !== null && candy.colorIndex === this.highlightColor) {
+                    ctx.save();
+                    ctx.strokeStyle = '#FFD700';
+                    ctx.lineWidth = 3;
+                    ctx.shadowColor = '#FFD700';
+                    ctx.shadowBlur = 15;
+                    ctx.beginPath();
+                    ctx.arc(candy.x, y, 30, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                // Assist effect for sort_assist
+                if (this.assistTarget !== null && (this.assistTarget[0] === i || this.assistTarget[1] === i)) {
+                    ctx.save();
+                    ctx.strokeStyle = '#00FF00';
+                    ctx.lineWidth = 3;
+                    ctx.shadowColor = '#00FF00';
+                    ctx.shadowBlur = 20;
+                    const pulse = Math.sin(Date.now() / 100) * 0.2 + 0.8;
+                    ctx.globalAlpha = pulse;
+                    ctx.beginPath();
+                    ctx.arc(candy.x, y, 35, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
             });
 
             // Falling candy animation
@@ -1291,11 +1490,12 @@
 
     // ==================== Maze Game ====================
     class MazeGame {
-        constructor(canvas, audio, saveManager, onBack, onComplete) {
+        constructor(canvas, audio, saveManager, starManager, onBack, onComplete) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
+            this.starManager = starManager;
             this.onBack = onBack;
             this.onComplete = onComplete;
             this.particles = [];
@@ -1309,6 +1509,10 @@
             this.direction = null;
             this.bumpTime = 0;
             this.victory = false;
+            // Item effects
+            this.pathHighlight = [];
+            this.canPhase = false;
+            this.itemButtons = [];
             this.controlButtons = [
                 { dir: 'up', x: 700, y: 200 },
                 { dir: 'down', x: 700, y: 320 },
@@ -1325,8 +1529,61 @@
             this.moving = false;
             this.bumpTime = 0;
             this.victory = false;
+            this.pathHighlight = [];
+            this.canPhase = false;
+            this.setupItemButtons();
             this.canvas.onclick = (e) => this.handleClick(e);
             this.canvas.onkeydown = (e) => this.handleKey(e);
+        }
+
+        setupItemButtons() {
+            this.itemButtons = [];
+            const items = [
+                { id: 'map_fragment', label: '🗺️', x: 720, y: 30 },
+                { id: 'wall_soften', label: '👻', x: 770, y: 30 }
+            ];
+            items.forEach(item => {
+                const count = this.starManager.getItemCount(item.id);
+                if (count > 0) {
+                    this.itemButtons.push({ ...item, count });
+                }
+            });
+        }
+
+        useItem(itemId) {
+            if (!this.starManager.hasItem(itemId)) return false;
+            this.starManager.useItem(itemId);
+            if (itemId === 'map_fragment') {
+                // Show path from current position to exit (up to 3 steps)
+                const path = this.findPath(this.player.x, this.player.y, this.exit.x, this.exit.y);
+                this.pathHighlight = path.slice(0, 3);
+                this.audio.playSound('select');
+            } else if (itemId === 'wall_soften') {
+                this.canPhase = true;
+                this.audio.playSound('select');
+            }
+            this.setupItemButtons();
+            return true;
+        }
+
+        findPath(sx, sy, ex, ey) {
+            const queue = [{ x: sx, y: sy, path: [] }];
+            const visited = new Set();
+            visited.add(`${sx},${sy}`);
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                if (curr.x === ex && curr.y === ey) return curr.path;
+                for (const [dx, dy] of [[0,-1], [0,1], [-1,0], [1,0]]) {
+                    const nx = curr.x + dx;
+                    const ny = curr.y + dy;
+                    const key = `${nx},${ny}`;
+                    if (!visited.has(key) && this.maze[ny] && this.maze[ny][nx] === 0) {
+                        visited.add(key);
+                        queue.push({ x: nx, y: ny, path: [...curr.path, { x: nx, y: ny }] });
+                    }
+                }
+            }
+            return [];
         }
 
         generateMaze() {
@@ -1378,6 +1635,16 @@
             if (this.victory) return;
 
             const pos = this.getMousePos(e);
+
+            // Item buttons
+            for (const btn of this.itemButtons) {
+                const dx = pos.x - btn.x;
+                const dy = pos.y - btn.y;
+                if (Math.abs(dx) < 25 && Math.abs(dy) < 20) {
+                    this.useItem(btn.id);
+                    return;
+                }
+            }
 
             // Back button
             if (pos.x < 70 && pos.y < 50) {
@@ -1492,6 +1759,21 @@
             ctx.fillStyle = COLORS.background;
             ctx.fillRect(0, 0, 800, 600);
 
+            // Item buttons (top right)
+            this.itemButtons.forEach(btn => {
+                ctx.fillStyle = COLORS.primary;
+                ctx.beginPath();
+                ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                ctx.fill();
+                ctx.fillStyle = '#FFF';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(btn.label, btn.x, btn.y + 6);
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
+            });
+
             // Title
             ctx.fillStyle = COLORS.text;
             ctx.font = 'bold 32px Arial';
@@ -1519,6 +1801,15 @@
                         ctx.fillRect(px, py, size - 2, size - 2);
                     }
                 }
+            }
+
+            // Path highlight for map_fragment
+            if (this.pathHighlight.length > 0) {
+                this.pathHighlight.forEach((cell, i) => {
+                    const alpha = 1 - i * 0.2;
+                    ctx.fillStyle = `rgba(0, 255, 0, ${alpha * 0.4})`;
+                    ctx.fillRect(offsetX + cell.x * size + 2, offsetY + cell.y * size + 2, size - 6, size - 6);
+                });
             }
 
             // Exit marker
@@ -1788,6 +2079,7 @@
                         this.canvas,
                         this.audio,
                         this.saveManager,
+                        this.starManager,
                         () => this.showHome(),
                         () => this.showVictory()
                     );
@@ -1797,6 +2089,7 @@
                         this.canvas,
                         this.audio,
                         this.saveManager,
+                        this.starManager,
                         () => this.showHome(),
                         () => this.showVictory()
                     );
@@ -1806,6 +2099,7 @@
                         this.canvas,
                         this.audio,
                         this.saveManager,
+                        this.starManager,
                         () => this.showHome(),
                         () => this.showVictory()
                     );
