@@ -220,6 +220,8 @@
         constructor() {
             this.key = 'preschool_puzzle_stars';
             this.invKey = 'preschool_puzzle_inventory';
+            this.dailyKey = 'preschool_puzzle_last_login';
+            this.streakKey = 'preschool_puzzle_login_streak';
         }
         getStars() {
             try { return parseInt(localStorage.getItem(this.key) || '0'); } catch { return 0; }
@@ -258,6 +260,60 @@
         getItemCount(itemId) {
             return this.getInventory()[itemId] || 0;
         }
+        // Daily bonus
+        canClaimDailyBonus() {
+            const today = new Date().toDateString();
+            const last = localStorage.getItem(this.dailyKey);
+            return last !== today;
+        }
+        claimDailyBonus() {
+            if (!this.canClaimDailyBonus()) return false;
+            const today = new Date().toDateString();
+            localStorage.setItem(this.dailyKey, today);
+            // Update streak
+            const lastDate = localStorage.getItem(this.dailyKey + '_date');
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yStr = yesterday.toDateString();
+            let streak = 1;
+            if (lastDate === yStr) {
+                streak = parseInt(localStorage.getItem(this.streakKey) || '0') + 1;
+            }
+            localStorage.setItem(this.streakKey, String(streak));
+            localStorage.setItem(this.dailyKey + '_date', today);
+            this.addStars(1);
+            // Every 7 days give random item
+            if (streak > 0 && streak % 7 === 0) {
+                const items = ['shape_hint', 'time_pause', 'color_magnifier', 'sort_assist', 'map_fragment', 'wall_soften'];
+                this.addItem(items[Math.floor(Math.random() * items.length)]);
+            }
+            return true;
+        }
+        getStreak() {
+            return parseInt(localStorage.getItem(this.streakKey) || '0');
+        }
+        // Gacha: random item for 10 stars
+        gacha() {
+            if (!this.spendStars(10)) return null;
+            const items = ['shape_hint', 'time_pause', 'color_magnifier', 'sort_assist', 'map_fragment', 'wall_soften'];
+            const item = items[Math.floor(Math.random() * items.length)];
+            this.addItem(item);
+            return item;
+        }
+        // Upgrade: 3 same items -> upgraded version
+        canUpgrade(itemId) {
+            return this.getItemCount(itemId) >= 3 && !itemId.includes('_plus');
+        }
+        upgrade(itemId) {
+            if (!this.canUpgrade(itemId)) return null;
+            const inv = this.getInventory();
+            inv[itemId] -= 3;
+            if (inv[itemId] <= 0) delete inv[itemId];
+            const plusId = itemId + '_plus';
+            inv[plusId] = (inv[plusId] || 0) + 1;
+            localStorage.setItem(this.invKey, JSON.stringify(inv));
+            return plusId;
+        }
     }
 
     // ==================== Item Shop ====================
@@ -271,28 +327,50 @@
             this.buttons = [];
             this.buyResults = [];
             this.resultTimer = 0;
+            this.gachaResult = null;
+            this.gachaTimer = 0;
+            this.upgradeResult = null;
+            this.upgradeTimer = 0;
             this.initButtons();
             canvas.addEventListener('click', e => this.handleClick(e));
         }
         initButtons() {
             const items = itemRegistry.list();
             this.buttons = [];
-            let y = 120;
+            let y = 160;
             items.forEach((item, i) => {
                 const owned = this.starManager.getItemCount(item.id);
                 const canAfford = this.starManager.getStars() >= item.cost;
+                const canUpgrade = this.starManager.canUpgrade(item.id);
                 this.buttons.push({
                     x: 400, y: y, width: 360, height: 60,
-                    item: item, owned: owned, canAfford: canAfford
+                    item: item, owned: owned, canAfford: canAfford, canUpgrade: canUpgrade
                 });
                 y += 70;
             });
-            this.backBtn = { x: 400, y: 560, width: 120, height: 44 };
+            this.backBtn = { x: 400, y: 570, width: 120, height: 44 };
+            this.gachaBtn = { x: 400, y: 115, width: 160, height: 40 };
         }
         handleClick(e) {
             const rect = this.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (800 / rect.width);
             const y = (e.clientY - rect.top) * (600 / rect.height);
+            // Gacha button
+            if (x >= this.gachaBtn.x - this.gachaBtn.width/2 && x <= this.gachaBtn.x + this.gachaBtn.width/2 &&
+                y >= this.gachaBtn.y - this.gachaBtn.height/2 && y <= this.gachaBtn.y + this.gachaBtn.height/2) {
+                if (this.starManager.getStars() >= 10) {
+                    const result = this.starManager.gacha();
+                    if (result) {
+                        const itemDef = ITEM_DEFS.find(i => i.id === result);
+                        this.gachaResult = itemDef ? itemDef.name : result;
+                        this.gachaTimer = 120;
+                        this.audio.playSound('success');
+                    }
+                } else {
+                    this.audio.playSound('error');
+                }
+                return;
+            }
             // Back button
             if (x >= this.backBtn.x - 60 && x <= this.backBtn.x + 60 &&
                 y >= this.backBtn.y - 22 && y <= this.backBtn.y + 22) {
@@ -304,13 +382,28 @@
             for (const btn of this.buttons) {
                 if (x >= btn.x - btn.width/2 && x <= btn.x + btn.width/2 &&
                     y >= btn.y - btn.height/2 && y <= btn.y + btn.height/2) {
+                    // Upgrade check (click on owned item with 3+)
+                    if (btn.canUpgrade && !btn.owned) {
+                        // Can't happen, but safety
+                    }
+                    if (btn.owned >= 3 && this.starManager.canUpgrade(btn.item.id)) {
+                        const upgraded = this.starManager.upgrade(btn.item.id);
+                        if (upgraded) {
+                            this.upgradeResult = btn.item.name + ' → ' + upgraded;
+                            this.upgradeTimer = 120;
+                            this.audio.playSound('success');
+                            this.initButtons();
+                        }
+                        return;
+                    }
                     if (!btn.owned && btn.canAfford) {
                         if (this.starManager.spendStars(btn.item.cost)) {
                             this.starManager.addItem(btn.item.id);
                             btn.owned = true;
                             btn.canAfford = this.starManager.getStars() >= btn.item.cost;
                             this.audio.playSound('success');
-                            this.buyResults.push({ text: `获得 ${btn.item.name}!`, color: '#4CAF50', y: btn.y });
+                            const itemDef = ITEM_DEFS.find(i => i.id === btn.item.id);
+                            this.buyResults.push({ text: `获得 ${itemDef ? itemDef.name : btn.item.id}!`, color: '#4CAF50', y: btn.y });
                             this.resultTimer = 60;
                         } else {
                             this.audio.playSound('error');
@@ -324,6 +417,8 @@
         }
         update() {
             if (this.resultTimer > 0) this.resultTimer--;
+            if (this.gachaTimer > 0) this.gachaTimer--;
+            if (this.upgradeTimer > 0) this.upgradeTimer--;
         }
         draw() {
             const ctx = this.ctx;
@@ -339,19 +434,44 @@
             // Stars balance
             const stars = this.starManager.getStars();
             ctx.font = '22px Arial';
-            ctx.fillText(`★ 当前星星: ${stars}`, 400, 95);
+            ctx.fillText(`★ ${stars}`, 400, 95);
+            // Gacha button
+            const canGacha = stars >= 10;
+            ctx.fillStyle = canGacha ? '#FFD700' : '#CCC';
+            ctx.beginPath();
+            ctx.roundRect(this.gachaBtn.x - this.gachaBtn.width/2, this.gachaBtn.y - this.gachaBtn.height/2, this.gachaBtn.width, this.gachaBtn.height, 10);
+            ctx.fill();
+            ctx.fillStyle = canGacha ? '#333' : '#888';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText('🎰 扭蛋 10★', this.gachaBtn.x, this.gachaBtn.y + 6);
+            // Gacha result
+            if (this.gachaTimer > 0) {
+                ctx.globalAlpha = this.gachaTimer / 120;
+                ctx.fillStyle = '#FF6B6B';
+                ctx.font = 'bold 24px Arial';
+                ctx.fillText(`恭喜获得 ${this.gachaResult}!`, 400, 150);
+                ctx.globalAlpha = 1;
+            }
             // Items
             this.buttons.forEach(btn => {
                 const item = btn.item;
                 const owned = this.starManager.getItemCount(item.id);
+                const canUpgrade = this.starManager.canUpgrade(item.id);
                 // BG
-                ctx.fillStyle = owned ? '#E8F5E9' : (btn.canAfford ? '#FFF' : '#F5F5F5');
+                ctx.fillStyle = canUpgrade ? '#FFF9C4' : (owned ? '#E8F5E9' : (this.starManager.getStars() >= item.cost ? '#FFF' : '#F5F5F5'));
                 ctx.beginPath();
                 ctx.roundRect(btn.x - btn.width/2, btn.y - btn.height/2, btn.width, btn.height, 12);
                 ctx.fill();
-                ctx.strokeStyle = owned ? '#4CAF50' : (btn.canAfford ? COLORS.primary : '#CCC');
+                ctx.strokeStyle = canUpgrade ? '#FFC107' : (owned ? '#4CAF50' : (this.starManager.getStars() >= item.cost ? COLORS.primary : '#CCC'));
                 ctx.lineWidth = 2;
                 ctx.stroke();
+                // Upgrade hint
+                if (canUpgrade) {
+                    ctx.fillStyle = '#FF8F00';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('点击升级(+1)', btn.x, btn.y - 22);
+                }
                 // Name
                 ctx.fillStyle = COLORS.text;
                 ctx.font = 'bold 20px Arial';
@@ -368,11 +488,20 @@
                     ctx.font = 'bold 18px Arial';
                     ctx.fillText(`已拥有 ×${owned}`, btn.x + 160, btn.y + 5);
                 } else {
-                    ctx.fillStyle = btn.canAfford ? '#FFB347' : '#E57373';
+                    ctx.fillStyle = this.starManager.getStars() >= item.cost ? '#FFB347' : '#E57373';
                     ctx.font = 'bold 18px Arial';
                     ctx.fillText(`★ ${item.cost}`, btn.x + 160, btn.y + 5);
                 }
             });
+            // Upgrade result
+            if (this.upgradeTimer > 0) {
+                ctx.globalAlpha = this.upgradeTimer / 120;
+                ctx.fillStyle = '#FFC107';
+                ctx.font = 'bold 22px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`升级成功: ${this.upgradeResult}`, 400, 530);
+                ctx.globalAlpha = 1;
+            }
             // Back btn
             ctx.fillStyle = COLORS.primary;
             ctx.beginPath();
@@ -575,6 +704,14 @@
 
         handleClick(e) {
             const pos = this.getMousePos(e);
+            // Daily bonus button (top left)
+            if (pos.x >= 20 && pos.x <= 150 && pos.y >= 20 && pos.y <= 64) {
+                if (this.starManager.canClaimDailyBonus()) {
+                    this.starManager.claimDailyBonus();
+                    this.audio.playSound('success');
+                }
+                return;
+            }
             // Shop button (top right)
             if (pos.x >= 680 && pos.x <= 780 && pos.y >= 20 && pos.y <= 70) {
                 this.audio.playSound('select');
@@ -635,6 +772,27 @@
             ctx.font = 'bold 22px Arial';
             ctx.textAlign = 'center';
             ctx.fillText(`★ ${stars}`, 730, 52);
+
+            // Daily bonus button (top left)
+            if (this.starManager.canClaimDailyBonus()) {
+                ctx.fillStyle = '#4CAF50';
+                ctx.beginPath();
+                ctx.roundRect(20, 20, 130, 44, 10);
+                ctx.fill();
+                ctx.fillStyle = '#FFF';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('📅 每日签到', 85, 50);
+                ctx.textAlign = 'left';
+            } else {
+                const streak = this.starManager.getStreak();
+                if (streak > 0) {
+                    ctx.fillStyle = '#888';
+                    ctx.font = '16px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(`连续${streak}天`, 25, 50);
+                }
+            }
 
             // Shop button (top right)
             ctx.fillStyle = this.shopHovered ? '#E68A00' : COLORS.primary;
