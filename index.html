@@ -689,6 +689,23 @@
                 this.initButtons();
                 return;
             }
+            // Fusion tab button clicks
+            if (this.currentTab === 'fusion') {
+                for (const btn of this.fusionButtons) {
+                    if (x >= btn.x - btn.width/2 && x <= btn.x + btn.width/2 &&
+                        y >= btn.y - btn.height/2 && y <= btn.y + btn.height/2) {
+                        const upgraded = this.starManager.upgrade(btn.item.id);
+                        if (upgraded) {
+                            this.upgradeResult = btn.item.name + ' → ' + upgraded;
+                            this.upgradeTimer = 120;
+                            this.audio.playSound('success');
+                            this.initButtons();
+                        }
+                        return;
+                    }
+                }
+                return;
+            }
             // Gacha button
             if (x >= this.gachaBtn.x - this.gachaBtn.width/2 && x <= this.gachaBtn.x + this.gachaBtn.width/2 &&
                 y >= this.gachaBtn.y - this.gachaBtn.height/2 && y <= this.gachaBtn.y + this.gachaBtn.height/2) {
