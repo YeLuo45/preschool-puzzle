@@ -210,6 +210,10 @@
         { id: 'sort_assist', name: '排序助手', desc: '自动找到匹配对', cost: 3, game: 'color', effect: 'assist' },
         { id: 'map_fragment', name: '地图碎片', desc: '显示路径3步', cost: 2, game: 'maze', effect: 'path' },
         { id: 'wall_soften', name: '穿墙术', desc: '穿墙一次', cost: 3, game: 'maze', effect: 'phase' },
+        { id: 'time_slow', name: '减速沙漏', desc: '全局时间减速50%', cost: 8, game: 'all', effect: 'slow' },
+        { id: 'double_points', name: '双倍积分', desc: '下次完成双倍星星', cost: 12, game: 'all', effect: 'double' },
+        { id: 'shield', name: '护盾', desc: '免疫一次失误', cost: 10, game: 'all', effect: 'shield' },
+        { id: 'reveal_answer', name: '答案之书', desc: '显示解法提示', cost: 6, game: 'all', effect: 'reveal' },
     ];
 
     const itemRegistry = new ToolRegistry();
@@ -1181,16 +1185,22 @@
             this.animProgress = 0;
             this.shapes = [];
             this.gridCells = [];
-            // Item effects
+// Item effects
             this.hintActive = false;
             this.hintTimer = 0;
             this.paused = false;
+            this.timeSlow = false;
+            this.timeSlowTimer = 0;
+            this.doublePoints = false;
+            this.shieldActive = false;
+            this.revealActive = false;
+            this.revealTimer = 0;
             // Item buttons
             this.itemButtons = [];
             this.init();
         }
 
-init() {
+        init() {
             this.shapes = this.shuffle([...SHAPES]);
             this.gridCells = this.shuffle([...Array(6).keys()]);
             this.selectedShape = null;
@@ -1201,6 +1211,12 @@ init() {
             this.hintActive = false;
             this.hintTimer = 0;
             this.paused = false;
+            this.timeSlow = false;
+            this.timeSlowTimer = 0;
+            this.doublePoints = false;
+            this.shieldActive = false;
+            this.revealActive = false;
+            this.revealTimer = 0;
             this.setupItemButtons();
 
             this.canvas.onclick = (e) => this.handleClick(e);
@@ -1210,7 +1226,11 @@ init() {
             this.itemButtons = [];
             const items = [
                 { id: 'shape_hint', label: '💡', x: 720, y: 30 },
-                { id: 'time_pause', label: '⏸', x: 770, y: 30 }
+                { id: 'time_pause', label: '⏸', x: 770, y: 30 },
+                { id: 'time_slow', label: '⏳', x: 720, y: 70 },
+                { id: 'double_points', label: '✖2', x: 770, y: 70 },
+                { id: 'shield', label: '🛡', x: 720, y: 110 },
+                { id: 'reveal_answer', label: '📖', x: 770, y: 110 }
             ];
             items.forEach(item => {
                 const count = this.starManager.getItemCount(item.id);
@@ -1229,6 +1249,21 @@ init() {
                 this.audio.playSound('select');
             } else if (itemId === 'time_pause') {
                 this.paused = !this.paused;
+                this.audio.playSound('select');
+            } else if (itemId === 'time_slow') {
+                this.timeSlow = true;
+                this.timeSlowTimer = 600;
+                this.audio.playSound('select');
+            } else if (itemId === 'double_points') {
+                this.doublePoints = true;
+                this.setupItemButtons();
+                return true;
+            } else if (itemId === 'shield') {
+                this.shieldActive = true;
+                this.audio.playSound('select');
+            } else if (itemId === 'reveal_answer') {
+                this.revealActive = true;
+                this.revealTimer = 300;
                 this.audio.playSound('select');
             }
             this.setupItemButtons();
@@ -1311,7 +1346,12 @@ init() {
                                 }, 500);
                             }
                         } else {
-                            this.audio.playSound('error');
+                            if (this.shieldActive) {
+                                this.shieldActive = false;
+                                this.audio.playSound('select');
+                            } else {
+                                this.audio.playSound('error');
+                            }
                         }
                         return;
                     }
@@ -1329,6 +1369,14 @@ init() {
             if (this.hintActive) {
                 this.hintTimer--;
                 if (this.hintTimer <= 0) this.hintActive = false;
+            }
+            if (this.timeSlow && this.timeSlowTimer > 0) {
+                this.timeSlowTimer--;
+                if (this.timeSlowTimer <= 0) this.timeSlow = false;
+            }
+            if (this.revealActive) {
+                this.revealTimer--;
+                if (this.revealTimer <= 0) this.revealActive = false;
             }
             this.particles = this.particles.filter(p => {
                 p.update();
@@ -1422,7 +1470,33 @@ init() {
                         ctx.setLineDash([]);
                         ctx.restore();
                     }
+                    // Reveal answer: show solution directly
+                    if (this.revealActive) {
+                        ctx.save();
+                        ctx.strokeStyle = '#9C27B0';
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 35, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.fillStyle = 'rgba(156, 39, 176, 0.15)';
+                        ctx.fill();
+                        ctx.restore();
+                    }
                 }
+            }
+
+            // Shield indicator
+            if (this.shieldActive) {
+                ctx.save();
+                ctx.strokeStyle = '#4CAF50';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([8, 4]);
+                ctx.strokeRect(85, 135, 630, 380);
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#4CAF50';
+                ctx.font = 'bold 14px Arial';
+                ctx.fillText('🛡 护盾激活', 90, 155);
+                ctx.restore();
             }
 
             // Progress
@@ -1474,6 +1548,12 @@ init() {
             this.highlightTimer = 0;
             this.assistTarget = null;
             this.assistTimer = 0;
+            this.timeSlow = false;
+            this.timeSlowTimer = 0;
+            this.doublePoints = false;
+            this.shieldActive = false;
+            this.revealActive = false;
+            this.revealTimer = 0;
             this.itemButtons = [];
             this.init();
         }
@@ -1497,6 +1577,12 @@ init() {
             this.highlightTimer = 0;
             this.assistTarget = null;
             this.assistTimer = 0;
+            this.timeSlow = false;
+            this.timeSlowTimer = 0;
+            this.doublePoints = false;
+            this.shieldActive = false;
+            this.revealActive = false;
+            this.revealTimer = 0;
             this.setupItemButtons();
             this.canvas.onclick = (e) => this.handleClick(e);
         }
@@ -1505,7 +1591,11 @@ init() {
             this.itemButtons = [];
             const items = [
                 { id: 'color_magnifier', label: '🔍', x: 720, y: 30 },
-                { id: 'sort_assist', label: '✨', x: 770, y: 30 }
+                { id: 'sort_assist', label: '✨', x: 770, y: 30 },
+                { id: 'time_slow', label: '⏳', x: 720, y: 70 },
+                { id: 'double_points', label: '✖2', x: 770, y: 70 },
+                { id: 'shield', label: '🛡', x: 720, y: 110 },
+                { id: 'reveal_answer', label: '📖', x: 770, y: 110 }
             ];
             items.forEach(item => {
                 const count = this.starManager.getItemCount(item.id);
@@ -1541,6 +1631,21 @@ init() {
                 }
                 this.starManager.addItem(itemId); // refund if no pair
                 return false;
+            } else if (itemId === 'time_slow') {
+                this.timeSlow = true;
+                this.timeSlowTimer = 600;
+                this.audio.playSound('select');
+            } else if (itemId === 'double_points') {
+                this.doublePoints = true;
+                this.setupItemButtons();
+                return true;
+            } else if (itemId === 'shield') {
+                this.shieldActive = true;
+                this.audio.playSound('select');
+            } else if (itemId === 'reveal_answer') {
+                this.revealActive = true;
+                this.revealTimer = 300;
+                this.audio.playSound('select');
             }
             this.setupItemButtons();
             return true;
@@ -1601,7 +1706,12 @@ init() {
                             this.fallingProgress = 0;
                             this.selectedCandy = null;
                         } else {
-                            this.audio.playSound('error');
+                            if (this.shieldActive) {
+                                this.shieldActive = false;
+                                this.audio.playSound('select');
+                            } else {
+                                this.audio.playSound('error');
+                            }
                         }
                         return;
                     }
@@ -1645,6 +1755,14 @@ init() {
             if (this.assistTarget !== null) {
                 this.assistTimer--;
                 if (this.assistTimer <= 0) this.assistTarget = null;
+            }
+            if (this.timeSlow && this.timeSlowTimer > 0) {
+                this.timeSlowTimer--;
+                if (this.timeSlowTimer <= 0) this.timeSlow = false;
+            }
+            if (this.revealActive) {
+                this.revealTimer--;
+                if (this.revealTimer <= 0) this.revealActive = false;
             }
             this.particles = this.particles.filter(p => {
                 p.update();
@@ -1867,6 +1985,12 @@ init() {
             // Item effects
             this.pathHighlight = [];
             this.canPhase = false;
+            this.timeSlow = false;
+            this.timeSlowTimer = 0;
+            this.doublePoints = false;
+            this.shieldActive = false;
+            this.revealActive = false;
+            this.revealTimer = 0;
             this.itemButtons = [];
             this.controlButtons = [
                 { dir: 'up', x: 700, y: 200 },
@@ -1886,6 +2010,12 @@ init() {
             this.victory = false;
             this.pathHighlight = [];
             this.canPhase = false;
+            this.timeSlow = false;
+            this.timeSlowTimer = 0;
+            this.doublePoints = false;
+            this.shieldActive = false;
+            this.revealActive = false;
+            this.revealTimer = 0;
             this.setupItemButtons();
             this.canvas.onclick = (e) => this.handleClick(e);
             this.canvas.onkeydown = (e) => this.handleKey(e);
@@ -1895,7 +2025,11 @@ init() {
             this.itemButtons = [];
             const items = [
                 { id: 'map_fragment', label: '🗺️', x: 720, y: 30 },
-                { id: 'wall_soften', label: '👻', x: 770, y: 30 }
+                { id: 'wall_soften', label: '👻', x: 770, y: 30 },
+                { id: 'time_slow', label: '⏳', x: 720, y: 70 },
+                { id: 'double_points', label: '✖2', x: 770, y: 70 },
+                { id: 'shield', label: '🛡', x: 720, y: 110 },
+                { id: 'reveal_answer', label: '📖', x: 770, y: 110 }
             ];
             items.forEach(item => {
                 const count = this.starManager.getItemCount(item.id);
@@ -1915,6 +2049,21 @@ init() {
                 this.audio.playSound('select');
             } else if (itemId === 'wall_soften') {
                 this.canPhase = true;
+                this.audio.playSound('select');
+            } else if (itemId === 'time_slow') {
+                this.timeSlow = true;
+                this.timeSlowTimer = 600;
+                this.audio.playSound('select');
+            } else if (itemId === 'double_points') {
+                this.doublePoints = true;
+                this.setupItemButtons();
+                return true;
+            } else if (itemId === 'shield') {
+                this.shieldActive = true;
+                this.audio.playSound('select');
+            } else if (itemId === 'reveal_answer') {
+                this.revealActive = true;
+                this.revealTimer = 300;
                 this.audio.playSound('select');
             }
             this.setupItemButtons();
@@ -2480,9 +2629,10 @@ showVictory() {
             const gameId = this.currentGame && this.currentGame.constructor.name === 'ShapeMatchGame' ? 'shape' :
                            this.currentGame && this.currentGame.constructor.name === 'ColorSortGame' ? 'color' : 'maze';
             const isFirst = !this.saveManager.isCompleted(gameId);
+            const doubleMult = (this.currentGame && this.currentGame.doublePoints) ? 2 : 1;
             if (isFirst) {
-                this.starManager.addStars(1);
-                this.starManager.addTotalStarsEarned(1);
+                this.starManager.addStars(1 * doubleMult);
+                this.starManager.addTotalStarsEarned(1 * doubleMult);
             }
             this.starManager.incrementGameComplete(gameId);
             this.achievementManager.checkAndAward();
