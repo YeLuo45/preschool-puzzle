@@ -1388,7 +1388,7 @@
 
     // ==================== Home Screen ====================
     class HomeScreen {
-constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, achievementManager, onOpenAchievements, onOpenChallenges, onOpenItemBook) {
+constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, achievementManager, onOpenAchievements, onOpenChallenges, onOpenItemBook, onStartTimed) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
@@ -1400,6 +1400,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.onOpenAchievements = onOpenAchievements;
             this.onOpenChallenges = onOpenChallenges;
             this.onOpenItemBook = onOpenItemBook;
+            this.onStartTimed = onStartTimed;
             this.audioInitialized = false;
             this.games = [
                 { id: 'shape', name: '形状匹配', icon: 'shape' },
@@ -1412,6 +1413,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.scale = 1;
             this.particles = [];
             this.shopHovered = false;
+            this.timedHovered = false;
             this.init();
         }
 
@@ -1466,10 +1468,16 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                 this.onOpenAchievements();
                 return;
             }
-            // Challenge button (center-right, between achievements and shop)
-            if (pos.x >= 630 && pos.x <= 710 && pos.y >= 20 && pos.y <= 64) {
+            // Challenge button (now below achievements row)
+            if (pos.x >= 490 && pos.x <= 570 && pos.y >= 75 && pos.y <= 119) {
                 this.audio.playSound('select');
                 if (this.onOpenChallenges) this.onOpenChallenges();
+                return;
+            }
+            // Timed Challenge button
+            if (pos.x >= 580 && pos.x <= 670 && pos.y >= 75 && pos.y <= 119) {
+                this.audio.playSound('select');
+                if (this.onStartTimed) this.onStartTimed();
                 return;
             }
             // Item Book button (to the left of achievements)
@@ -1504,6 +1512,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             const pos = this.getMousePos(e);
             // Shop button hover
             this.shopHovered = pos.x >= 680 && pos.x <= 780 && pos.y >= 20 && pos.y <= 70;
+            this.timedHovered = pos.x >= 580 && pos.x <= 670 && pos.y >= 75 && pos.y <= 119;
             let found = -1;
             for (let i = 0; i < this.buttons.length; i++) {
                 const btn = this.buttons[i];
@@ -1512,7 +1521,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                 if (btn.hovered) found = i;
             }
             this.hoveredIndex = found;
-            this.canvas.style.cursor = (this.shopHovered || found >= 0) ? 'pointer' : 'default';
+            this.canvas.style.cursor = (this.shopHovered || this.timedHovered || found >= 0) ? 'pointer' : 'default';
         }
 
         drawBackground() {
@@ -1599,14 +1608,25 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             // Challenge button (center-right)
             ctx.fillStyle = '#FF5722';
             ctx.beginPath();
-            ctx.roundRect(630, 20, 80, 44, 10);
+            ctx.roundRect(490, 75, 80, 44, 10);
             ctx.fill();
             ctx.fillStyle = '#FFF';
             ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('⚡', 650, 36);
+            ctx.fillText('⚡', 510, 91);
             ctx.font = 'bold 12px Arial';
-            ctx.fillText('挑战', 690, 36);
+            ctx.fillText('挑战', 530, 91);
+
+            // Timed Challenge button (right of challenges)
+            ctx.fillStyle = '#E91E63';
+            ctx.beginPath();
+            ctx.roundRect(580, 75, 90, 44, 10);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('⏱️', 605, 91);
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('限时挑战', 645, 91);
 
             // Draw stars
             ctx.fillStyle = '#FFD700';
@@ -3469,7 +3489,8 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                 this.achievementManager,
                 () => this.showAchievements(),
                 () => this.showChallenges(),
-                () => this.showItemBook()
+                () => this.showItemBook(),
+                () => this.startTimedMode()
             );
         }
 
@@ -3551,6 +3572,10 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             }
         }
         startTimedMode(gameId) {
+            if (!gameId) {
+                const games = ['shape', 'color', 'maze'];
+                gameId = games[Math.floor(Math.random() * games.length)];
+            }
             // TimedChallengeGame wraps a random game with 60s timer
             const games = { shape: ShapeMatchGame, color: ColorSortGame, maze: MazeGame };
             const GameClass = games[gameId];
