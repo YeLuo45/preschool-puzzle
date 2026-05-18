@@ -487,6 +487,69 @@
         }
     }
 
+    // ==================== Challenge Panel ====================
+    class ChallengePanel {
+        constructor(ctx, challengeManager, onClose) {
+            this.ctx = ctx;
+            this.challengeManager = challengeManager;
+            this.onClose = onClose;
+        }
+        handleClick(x, y) {
+            if (y >= 530 && y <= 570 && x >= 350 && x <= 450) {
+                this.onClose();
+            }
+        }
+        draw() {
+            const ctx = this.ctx;
+            ctx.fillStyle = '#FFF8E7';
+            ctx.fillRect(0, 0, 800, 600);
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚡ 周挑战 #' + this.challengeManager.getCurrentWeek(), 400, 55);
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#888';
+            ctx.fillText('每周一刷新', 400, 85);
+            const data = this.challengeManager.getChallenges();
+            let y = 130;
+            data.challenges.forEach(ch => {
+                ctx.fillStyle = ch.completed ? '#E8F5E9' : '#FFF';
+                ctx.beginPath();
+                ctx.roundRect(150, y - 25, 500, 70, 12);
+                ctx.fill();
+                ctx.strokeStyle = ch.completed ? '#4CAF50' : '#DDD';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.font = '32px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(ch.icon, 170, y + 8);
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 18px Arial';
+                ctx.fillText(ch.name, 220, y - 5);
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#888';
+                ctx.fillText(ch.desc, 220, y + 18);
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'right';
+                ctx.fillText('+' + ch.reward + '★', 630, y - 5);
+                ctx.textAlign = 'left';
+                ctx.fillStyle = ch.completed ? '#4CAF50' : '#FF5722';
+                ctx.font = ch.completed ? 'bold 16px Arial' : '14px Arial';
+                ctx.fillText(ch.completed ? '✅ 已完成' : '❌ 进行中', 550, y + 18);
+                y += 85;
+            });
+            ctx.fillStyle = '#666';
+            ctx.beginPath();
+            ctx.roundRect(350, 540, 100, 36, 8);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('关闭', 400, 565);
+        }
+    }
+
     // ==================== Achievement Panel ====================
     class AchievementPanel {
         constructor(ctx, achievementManager, onClose) {
@@ -968,6 +1031,18 @@
                 this.onOpenAchievements();
                 return;
             }
+            // Challenge button (center-right, between achievements and shop)
+            if (pos.x >= 630 && pos.x <= 710 && pos.y >= 20 && pos.y <= 64) {
+                this.audio.playSound('select');
+                if (this.onOpenChallenges) this.onOpenChallenges();
+                return;
+            }
+            // Shop button (top right)
+            if (pos.x >= 720 && pos.x <= 820 && pos.y >= 20 && pos.y <= 70) {
+                this.audio.playSound('select');
+                this.onOpenShop();
+                return;
+            }
             for (let i = 0; i < this.buttons.length; i++) {
                 const btn = this.buttons[i];
                 if (pos.x >= btn.x - btn.width/2 && pos.x <= btn.x + btn.width/2 &&
@@ -1067,6 +1142,18 @@
             ctx.fillText('🏆', 560, 36);
             ctx.font = 'bold 12px Arial';
             ctx.fillText(`${achUnlocked}/${achTotal}`, 595, 36);
+
+            // Challenge button (center-right)
+            ctx.fillStyle = '#FF5722';
+            ctx.beginPath();
+            ctx.roundRect(630, 20, 80, 44, 10);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('⚡', 650, 36);
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('挑战', 690, 36);
 
             // Draw stars
             ctx.fillStyle = '#FFD700';
@@ -2655,7 +2742,8 @@
                 (gameId) => this.startGame(gameId),
                 () => this.openShop(),
                 this.achievementManager,
-                () => this.showAchievements()
+                () => this.showAchievements(),
+                () => this.showChallenges()
             );
         }
 
@@ -2664,6 +2752,14 @@
             this.homeScreen = null;
             this.itemShop = null;
             this.achievementPanel = new AchievementPanel(this.ctx, this.achievementManager, () => this.showHome());
+        }
+
+        showChallenges() {
+            this.currentScreen = 'challenges';
+            this.homeScreen = null;
+            this.itemShop = null;
+            this.achievementPanel = null;
+            this.challengePanel = new ChallengePanel(this.ctx, this.challengeManager, () => this.showHome());
         }
 
         openShop() {
@@ -2725,6 +2821,12 @@ showVictory() {
             }
             this.starManager.incrementGameComplete(gameId);
             this.achievementManager.checkAndAward();
+            // Check challenges
+            if (this.challengeManager) {
+                const elapsed = this.currentGame ? (this.currentGame.gameTime || 0) : 0;
+                this.challengeManager.checkChallenge(gameId + '_speed', gameId, elapsed);
+                this.challengeManager.checkItemChallenge('collector_10');
+            }
             this.victoryModal = new VictoryModal(
                 this.ctx,
                 () => this.replayGame(),
@@ -2764,6 +2866,11 @@ showVictory() {
                 this.achievementPanel.handleClick(x, y);
                 return;
             }
+
+            if (this.challengePanel) {
+                this.challengePanel.handleClick(x, y);
+                return;
+            }
         }
 
         gameLoop() {
@@ -2781,6 +2888,9 @@ showVictory() {
                 this.itemShop.update();
             }
             if (this.achievementPanel) {
+                // no update needed
+            }
+            if (this.challengePanel) {
                 // no update needed
             }
 
@@ -2801,6 +2911,9 @@ showVictory() {
             }
             if (this.achievementPanel) {
                 this.achievementPanel.draw();
+            }
+            if (this.challengePanel) {
+                this.challengePanel.draw();
             }
 
             requestAnimationFrame(() => this.gameLoop());
