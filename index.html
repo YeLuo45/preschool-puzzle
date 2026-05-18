@@ -1671,10 +1671,24 @@
 
             // Item buttons (top right)
             this.itemButtons.forEach(btn => {
-                ctx.fillStyle = COLORS.primary;
-                ctx.beginPath();
-                ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                ctx.fill();
+                const status = this.itemStatus ? this.itemStatus[btn.id] : null;
+                const isActive = status && (status.active || (status.timer > 0));
+                // Glow for active items
+                if (isActive) {
+                    ctx.save();
+                    ctx.shadowColor = '#FFD700';
+                    ctx.shadowBlur = 10;
+                    ctx.fillStyle = COLORS.primary;
+                    ctx.beginPath();
+                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.fillStyle = COLORS.primary;
+                    ctx.beginPath();
+                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                    ctx.fill();
+                }
                 ctx.fillStyle = '#FFF';
                 ctx.font = '20px Arial';
                 ctx.textAlign = 'center';
@@ -1682,6 +1696,20 @@
                 ctx.fillStyle = '#FFD700';
                 ctx.font = 'bold 12px Arial';
                 ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
+                // Timer text
+                if (status && status.timer > 0) {
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(Math.ceil(status.timer / 60) + 's', btn.x, btn.y + 32);
+                }
+                // Shield count
+                if (status && status.count !== undefined && status.count > 0) {
+                    ctx.fillStyle = '#FF5722';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`🛡${status.count}`, btn.x, btn.y + 32);
+                }
             });
 
             // Title
