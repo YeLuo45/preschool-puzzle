@@ -641,12 +641,14 @@
             this.gachaTimer = 0;
             this.upgradeResult = null;
             this.upgradeTimer = 0;
+            this.currentTab = 'items'; // 'items' or 'fusion'
             this.initButtons();
             canvas.addEventListener('click', e => this.handleClick(e));
         }
         initButtons() {
             const items = itemRegistry.list();
             this.buttons = [];
+            this.fusionButtons = [];
             let y = 160;
             items.forEach((item, i) => {
                 const owned = this.starManager.getItemCount(item.id);
@@ -656,15 +658,37 @@
                     x: 400, y: y, width: 360, height: 60,
                     item: item, owned: owned, canAfford: canAfford, canUpgrade: canUpgrade
                 });
-                y += 70;
+                // Fusion: show if owned >= 3
+                if (owned >= 3 && !item.id.includes('_plus')) {
+                    this.fusionButtons.push({
+                        x: 400, y: y, width: 360, height: 60,
+                        item: item, owned: owned
+                    });
+                    y += 70;
+                }
             });
             this.backBtn = { x: 400, y: 570, width: 120, height: 44 };
             this.gachaBtn = { x: 400, y: 115, width: 160, height: 40 };
+            this.itemsTabBtn = { x: 200, y: 115, width: 80, height: 36 };
+            this.fusionTabBtn = { x: 300, y: 115, width: 80, height: 36 };
         }
         handleClick(e) {
             const rect = this.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (800 / rect.width);
             const y = (e.clientY - rect.top) * (600 / rect.height);
+            // Tab buttons
+            if (x >= this.itemsTabBtn.x - 40 && x <= this.itemsTabBtn.x + 40 &&
+                y >= this.itemsTabBtn.y - 18 && y <= this.itemsTabBtn.y + 18) {
+                this.currentTab = 'items';
+                this.initButtons();
+                return;
+            }
+            if (x >= this.fusionTabBtn.x - 40 && x <= this.fusionTabBtn.x + 40 &&
+                y >= this.fusionTabBtn.y - 18 && y <= this.fusionTabBtn.y + 18) {
+                this.currentTab = 'fusion';
+                this.initButtons();
+                return;
+            }
             // Gacha button
             if (x >= this.gachaBtn.x - this.gachaBtn.width/2 && x <= this.gachaBtn.x + this.gachaBtn.width/2 &&
                 y >= this.gachaBtn.y - this.gachaBtn.height/2 && y <= this.gachaBtn.y + this.gachaBtn.height/2) {
@@ -747,6 +771,49 @@
             const stars = this.starManager.getStars();
             ctx.font = '22px Arial';
             ctx.fillText(`★ ${stars}`, 400, 95);
+            // Tab buttons
+            ctx.fillStyle = this.currentTab === 'items' ? '#4CAF50' : '#CCC';
+            ctx.beginPath();
+            ctx.roundRect(this.itemsTabBtn.x - 40, this.itemsTabBtn.y - 18, 80, 36, 8);
+            ctx.fill();
+            ctx.fillStyle = this.currentTab === 'fusion' ? '#FF5722' : '#CCC';
+            ctx.beginPath();
+            ctx.roundRect(this.fusionTabBtn.x - 40, this.fusionTabBtn.y - 18, 80, 36, 8);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('购买', this.itemsTabBtn.x, this.itemsTabBtn.y + 5);
+            ctx.fillText('融合', this.fusionTabBtn.x, this.fusionTabBtn.y + 5);
+
+            if (this.currentTab === 'fusion') {
+                // Draw fusion tab
+                ctx.fillStyle = '#FF5722';
+                ctx.font = 'bold 20px Arial';
+                ctx.fillText('融合（3个同种 → 强化版）', 400, 155);
+                if (this.fusionButtons.length === 0) {
+                    ctx.fillStyle = '#888';
+                    ctx.font = '16px Arial';
+                    ctx.fillText('拥有3个以上道具时可融合', 400, 200);
+                }
+                this.fusionButtons.forEach(btn => {
+                    ctx.fillStyle = '#FFF9C4';
+                    ctx.beginPath();
+                    ctx.roundRect(btn.x - btn.width/2, btn.y - btn.height/2, btn.width, btn.height, 12);
+                    ctx.fill();
+                    ctx.strokeStyle = '#FF5722';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = '#333';
+                    ctx.font = 'bold 20px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(btn.item.name + ' x' + btn.owned, btn.x - 160, btn.y);
+                    ctx.fillStyle = '#FF5722';
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'right';
+                    ctx.fillText('点击融合', btn.x + 160, btn.y);
+                });
+                ctx.textAlign = 'center';
+            } else {
             // Gacha button
             const canGacha = stars >= 10;
             ctx.fillStyle = canGacha ? '#FFD700' : '#CCC';
