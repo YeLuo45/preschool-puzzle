@@ -214,10 +214,13 @@
         { id: 'double_points', name: '双倍积分', desc: '下次完成双倍星星', cost: 12, game: 'all', effect: 'double' },
         { id: 'shield', name: '护盾', desc: '免疫一次失误', cost: 10, game: 'all', effect: 'shield' },
         { id: 'reveal_answer', name: '答案之书', desc: '显示解法提示', cost: 6, game: 'all', effect: 'reveal' },
+        { id: 'lucky_charm', name: '幸运符咒', desc: '50%概率额外得星', cost: 150, game: 'all', effect: 'lucky' },
+        { id: 'time_bank', name: '时间银行', desc: '存储时间，困难时取出', cost: 200, game: 'all', effect: 'timebank' },
     ];
 
     const itemRegistry = new ToolRegistry();
     ITEM_DEFS.forEach(item => itemRegistry.register(item.id, item));
+    // Plus versions auto-registered via upgrade logic
 
     // ==================== Star Manager ====================
     class StarManager {
