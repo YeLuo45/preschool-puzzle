@@ -429,6 +429,64 @@
         }
     }
 
+    // ==================== Challenge Manager ====================
+    class ChallengeManager {
+        constructor(starManager) {
+            this.starManager = starManager;
+            this.key = 'puzzle_challenges';
+            this.weekKey = 'puzzle_challenge_week';
+        }
+        getCurrentWeek() {
+            const now = new Date();
+            const start = new Date(now.getFullYear(), 0, 1);
+            return Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000));
+        }
+        isFreshWeek() {
+            const last = parseInt(localStorage.getItem(this.weekKey) || '0');
+            return this.getCurrentWeek() !== last;
+        }
+        getChallenges() {
+            const week = this.getCurrentWeek();
+            const saved = localStorage.getItem(this.key + '_week_' + week);
+            if (saved) return JSON.parse(saved);
+            // Fresh challenges
+            const data = {
+                week: week,
+                challenges: [
+                    { id: 'shape_speed', name: '形状速度赛', desc: '3分钟内完成形状游戏', icon: '⚡', target: 'shape', timeLimit: 180, reward: 5, completed: false },
+                    { id: 'color_speed', name: '颜色速度赛', desc: '3分钟内完成颜色游戏', icon: '⚡', target: 'color', timeLimit: 180, reward: 5, completed: false },
+                    { id: 'maze_speed', name: '迷宫速度赛', desc: '3分钟内完成迷宫', icon: '⚡', target: 'maze', timeLimit: 180, reward: 5, completed: false },
+                    { id: 'collector_10', name: '收藏家', desc: '拥有10种以上道具', icon: '📦', target: 'item', count: 10, reward: 3, completed: false }
+                ]
+            };
+            localStorage.setItem(this.key + '_week_' + week, JSON.stringify(data));
+            localStorage.setItem(this.weekKey, week.toString());
+            return data;
+        }
+        checkChallenge(id, gameId, elapsed) {
+            const data = this.getChallenges();
+            const ch = data.challenges.find(c => c.id === id);
+            if (!ch || ch.completed) return;
+            if (ch.target === gameId && elapsed <= ch.timeLimit) {
+                ch.completed = true;
+                this.starManager.addStars(ch.reward);
+                this.starManager.addTotalStarsEarned(ch.reward);
+                localStorage.setItem(this.key + '_week_' + data.week, JSON.stringify(data));
+            }
+        }
+        checkItemChallenge(id) {
+            const data = this.getChallenges();
+            const ch = data.challenges.find(c => c.id === id);
+            if (!ch || ch.completed) return;
+            if (this.starManager.getUniqueItemTypes() >= ch.count) {
+                ch.completed = true;
+                this.starManager.addStars(ch.reward);
+                this.starManager.addTotalStarsEarned(ch.reward);
+                localStorage.setItem(this.key + '_week_' + data.week, JSON.stringify(data));
+            }
+        }
+    }
+
     // ==================== Achievement Panel ====================
     class AchievementPanel {
         constructor(ctx, achievementManager, onClose) {
@@ -2562,6 +2620,7 @@
             this.saveManager = new SaveManager();
             this.starManager = new StarManager();
             this.achievementManager = new AchievementManager(this.starManager);
+            this.challengeManager = new ChallengeManager(this.starManager);
             this.currentScreen = 'home';
             this.currentGame = null;
             this.victoryModal = null;
