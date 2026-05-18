@@ -1864,6 +1864,14 @@
             this.revealActive = false;
             this.revealTimer = 0;
             this.itemButtons = [];
+            this.itemStatus = {
+                shape_hint: { active: false, timer: 0 },
+                time_pause: { active: false },
+                time_slow: { active: false, timer: 0 },
+                double_points: { active: false, timer: 0 },
+                shield: { active: false, count: 0 },
+                reveal_answer: { active: false, timer: 0 }
+            };
             this.init();
         }
 
@@ -1942,18 +1950,22 @@
                 return false;
             } else if (itemId === 'time_slow') {
                 this.timeSlow = true;
-                this.timeSlowTimer = 600;
+                this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
+                if (this.itemStatus) this.itemStatus.time_slow = { active: true, timer: this.timeSlowTimer };
                 this.audio.playSound('select');
             } else if (itemId === 'double_points') {
                 this.doublePoints = true;
+                if (this.itemStatus) this.itemStatus.double_points = { active: true, timer: 600 };
                 this.setupItemButtons();
                 return true;
             } else if (itemId === 'shield') {
                 this.shieldActive = true;
+                if (this.itemStatus) this.itemStatus.shield = { active: true, count: 1 };
                 this.audio.playSound('select');
             } else if (itemId === 'reveal_answer') {
                 this.revealActive = true;
                 this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
+                if (this.itemStatus) this.itemStatus.reveal_answer = { active: true, timer: this.revealTimer };
                 this.audio.playSound('select');
             } else if (itemId === 'color_magnifier') {
                 if (this.selectedCandy !== null) {
@@ -2091,11 +2103,14 @@
             if (this.timeSlow && this.timeSlowTimer > 0) {
                 this.timeSlowTimer--;
                 if (this.timeSlowTimer <= 0) this.timeSlow = false;
+                if (this.itemStatus) this.itemStatus.time_slow.timer = this.timeSlowTimer;
             }
             if (this.revealActive) {
                 this.revealTimer--;
                 if (this.revealTimer <= 0) this.revealActive = false;
+                if (this.itemStatus) this.itemStatus.reveal_answer.timer = this.revealTimer;
             }
+            if (this.itemStatus) this.itemStatus.shield.count = this.shieldActive || 0;
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
@@ -2109,10 +2124,23 @@
 
             // Item buttons (top right)
             this.itemButtons.forEach(btn => {
-                ctx.fillStyle = COLORS.primary;
-                ctx.beginPath();
-                ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                ctx.fill();
+                const status = this.itemStatus ? this.itemStatus[btn.id] : null;
+                const isActive = status && (status.active || (status.timer > 0));
+                if (isActive) {
+                    ctx.save();
+                    ctx.shadowColor = '#FFD700';
+                    ctx.shadowBlur = 10;
+                    ctx.fillStyle = COLORS.primary;
+                    ctx.beginPath();
+                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.fillStyle = COLORS.primary;
+                    ctx.beginPath();
+                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                    ctx.fill();
+                }
                 ctx.fillStyle = '#FFF';
                 ctx.font = '20px Arial';
                 ctx.textAlign = 'center';
@@ -2120,6 +2148,18 @@
                 ctx.fillStyle = '#FFD700';
                 ctx.font = 'bold 12px Arial';
                 ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
+                if (status && status.timer > 0) {
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(Math.ceil(status.timer / 60) + 's', btn.x, btn.y + 32);
+                }
+                if (status && status.count !== undefined && status.count > 0) {
+                    ctx.fillStyle = '#FF5722';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`🛡${status.count}`, btn.x, btn.y + 32);
+                }
             });
 
             // Title
@@ -2324,6 +2364,14 @@
             this.revealActive = false;
             this.revealTimer = 0;
             this.itemButtons = [];
+            this.itemStatus = {
+                shape_hint: { active: false, timer: 0 },
+                time_pause: { active: false },
+                time_slow: { active: false, timer: 0 },
+                double_points: { active: false, timer: 0 },
+                shield: { active: false, count: 0 },
+                reveal_answer: { active: false, timer: 0 }
+            };
             this.controlButtons = [
                 { dir: 'up', x: 700, y: 200 },
                 { dir: 'down', x: 700, y: 320 },
@@ -2385,13 +2433,16 @@
             } else if (itemId === 'time_slow') {
                 this.timeSlow = true;
                 this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
+                if (this.itemStatus) this.itemStatus.time_slow = { active: true, timer: this.timeSlowTimer };
                 this.audio.playSound('select');
             } else if (itemId === 'double_points') {
                 this.doublePoints = true;
+                if (this.itemStatus) this.itemStatus.double_points = { active: true, timer: 600 };
                 this.setupItemButtons();
                 return true;
             } else if (itemId === 'shield') {
                 this.shieldActive = (this.shieldActive || 0) + (itemId.includes('_plus') ? 2 : 1);
+                if (this.itemStatus) this.itemStatus.shield = { active: this.shieldActive > 0, count: this.shieldActive };
                 this.audio.playSound('select');
             } else if (itemId === 'reveal_answer') {
                 this.revealActive = true;
@@ -2584,6 +2635,13 @@
 
             if (this.bumpTime > 0) this.bumpTime--;
 
+            if (this.timeSlow && this.timeSlowTimer > 0) {
+                this.timeSlowTimer--;
+                if (this.timeSlowTimer <= 0) this.timeSlow = false;
+                if (this.itemStatus) this.itemStatus.time_slow.timer = this.timeSlowTimer;
+            }
+            if (this.itemStatus) this.itemStatus.shield.count = this.shieldActive || 0;
+
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
@@ -2597,10 +2655,23 @@
 
             // Item buttons (top right)
             this.itemButtons.forEach(btn => {
-                ctx.fillStyle = COLORS.primary;
-                ctx.beginPath();
-                ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                ctx.fill();
+                const status = this.itemStatus ? this.itemStatus[btn.id] : null;
+                const isActive = status && (status.active || (status.timer > 0));
+                if (isActive) {
+                    ctx.save();
+                    ctx.shadowColor = '#FFD700';
+                    ctx.shadowBlur = 10;
+                    ctx.fillStyle = COLORS.primary;
+                    ctx.beginPath();
+                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                    ctx.fill();
+                    ctx.restore();
+                } else {
+                    ctx.fillStyle = COLORS.primary;
+                    ctx.beginPath();
+                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
+                    ctx.fill();
+                }
                 ctx.fillStyle = '#FFF';
                 ctx.font = '20px Arial';
                 ctx.textAlign = 'center';
@@ -2608,6 +2679,18 @@
                 ctx.fillStyle = '#FFD700';
                 ctx.font = 'bold 12px Arial';
                 ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
+                if (status && status.timer > 0) {
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(Math.ceil(status.timer / 60) + 's', btn.x, btn.y + 32);
+                }
+                if (status && status.count !== undefined && status.count > 0) {
+                    ctx.fillStyle = '#FF5722';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`🛡${status.count}`, btn.x, btn.y + 32);
+                }
             });
 
             // Title
