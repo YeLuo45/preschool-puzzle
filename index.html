@@ -314,15 +314,188 @@
             localStorage.setItem(this.invKey, JSON.stringify(inv));
             return plusId;
         }
+        // Use upgrade ticket (instant upgrade, no materials)
+        useUpgradeTicket(itemId) {
+            if (!itemId.includes('_plus') && this.getItemCount(itemId) >= 1) {
+                const inv = this.getInventory();
+                inv[itemId]--;
+                if (inv[itemId] <= 0) delete inv[itemId];
+                const plusId = itemId + '_plus';
+                inv[plusId] = (inv[plusId] || 0) + 1;
+                localStorage.setItem(this.invKey, JSON.stringify(inv));
+                return plusId;
+            }
+            return null;
+        }
+        getUpgradeTicketCount() {
+            return this.getInventory()['upgrade_ticket'] || 0;
+        }
+        // Count unique item types (excluding plus versions)
+        getUniqueItemTypes() {
+            const inv = this.getInventory();
+            return Object.keys(inv).filter(k => !k.includes('_plus') && !k.includes('upgrade_ticket') && inv[k] > 0).length;
+        }
+        // Count total stars earned (tracked separately)
+        getTotalStarsEarned() {
+            return parseInt(localStorage.getItem('puzzle_total_stars') || '0');
+        }
+        addTotalStarsEarned(n) {
+            const cur = this.getTotalStarsEarned();
+            localStorage.setItem('puzzle_total_stars', String(cur + n));
+        }
+        // Game completion counters
+        getGameCompleteCount(gameId) {
+            return parseInt(localStorage.getItem('puzzle_complete_' + gameId) || '0');
+        }
+        incrementGameComplete(gameId) {
+            const cur = this.getGameCompleteCount(gameId);
+            localStorage.setItem('puzzle_complete_' + gameId, String(cur + 1));
+        }
+        // Gacha counter
+        getGachaCount() {
+            return parseInt(localStorage.getItem('puzzle_gacha_count') || '0');
+        }
+        incrementGacha() {
+            const cur = this.getGachaCount();
+            localStorage.setItem('puzzle_gacha_count', String(cur + 1));
+        }
+    }
+
+    // ==================== Achievement Manager ====================
+    class AchievementManager {
+        constructor(starManager) {
+            this.starManager = starManager;
+            this.key = 'puzzle_achievements';
+            this.achievements = [
+                { id: 'first_win', name: '初学者', desc: '完成任意游戏', icon: '🌟', reward: { type: 'stars', val: 2 }, condition: () => {
+                    const s = this.starManager.getGameCompleteCount('shape');
+                    const c = this.starManager.getGameCompleteCount('color');
+                    const m = this.starManager.getGameCompleteCount('maze');
+                    return s + c + m >= 1;
+                }},
+                { id: 'shape_master', name: '形状大师', desc: '完成形状游戏5次', icon: '🔷', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('shape') >= 5 },
+                { id: 'color_master', name: '颜色大师', desc: '完成颜色游戏5次', icon: '🌈', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('color') >= 5 },
+                { id: 'maze_master', name: '迷宫大师', desc: '完成迷宫游戏5次', icon: '🗺️', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('maze') >= 5 },
+                { id: 'collector', name: '收藏家', desc: '拥有全部6种道具', icon: '🏆', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getUniqueItemTypes() >= 6 },
+                { id: 'streak_7', name: '连续签到', desc: '连续签到7天', icon: '📅', reward: { type: 'item', val: 'shape_hint' }, condition: () => this.starManager.getStreak() >= 7 },
+                { id: 'star_50', name: '星星收集者', desc: '累计获得50⭐', icon: '💎', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getTotalStarsEarned() >= 50 },
+                { id: 'gacha_10', name: '扭蛋达人', desc: '扭蛋10次', icon: '🎰', reward: { type: 'item', val: 'upgrade_ticket' }, condition: () => this.starManager.getGachaCount() >= 10 },
+            ];
+            this.suitSets = [
+                { id: 'all_plus', name: '全能助手', desc: '拥有全部6种强化版道具', reward: { type: 'stars', val: 10 }, condition: () => {
+                    const plusItems = ['shape_hint_plus', 'time_pause_plus', 'color_magnifier_plus', 'sort_assist_plus', 'map_fragment_plus', 'wall_soften_plus'];
+                    return plusItems.every(i => this.starManager.getItemCount(i) > 0);
+                }},
+                { id: 'starter', name: '入门套装', desc: '首次拥有3种以上道具', reward: { type: 'stars', val: 2 }, condition: () => this.starManager.getUniqueItemTypes() >= 3 },
+            ];
+        }
+        load() {
+            try { return JSON.parse(localStorage.getItem(this.key) || '{}'); } catch { return {}; }
+        }
+        save(data) {
+            localStorage.setItem(this.key, JSON.stringify(data));
+        }
+        checkAndAward() {
+            const data = this.load();
+            const all = [...this.achievements, ...this.suitSets];
+            all.forEach(a => {
+                if (!data[a.id] && a.condition()) {
+                    data[a.id] = true;
+                    this.award(a);
+                }
+            });
+            this.save(data);
+            return data;
+        }
+        award(ach) {
+            if (ach.reward.type === 'stars') {
+                this.starManager.addStars(ach.reward.val);
+                this.starManager.addTotalStarsEarned(ach.reward.val);
+            } else if (ach.reward.type === 'item') {
+                this.starManager.addItem(ach.reward.val);
+            }
+        }
+        isUnlocked(id) {
+            return this.load()[id] === true;
+        }
+    }
+
+    // ==================== Achievement Panel ====================
+    class AchievementPanel {
+        constructor(ctx, achievementManager, onClose) {
+            this.ctx = ctx;
+            this.achievementManager = achievementManager;
+            this.onClose = onClose;
+        }
+        handleClick(x, y) {
+            if (y >= 530 && y <= 570 && x >= 350 && x <= 450) {
+                this.onClose();
+            }
+        }
+        draw() {
+            const ctx = this.ctx;
+            ctx.fillStyle = '#FFF8E7';
+            ctx.fillRect(0, 0, 800, 600);
+            // Title
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🏆 成就', 400, 60);
+            // Achievements
+            const all = [...this.achievementManager.achievements, ...this.achievementManager.suitSets];
+            let y = 120;
+            all.forEach((ach) => {
+                const unlocked = this.achievementManager.isUnlocked(ach.id);
+                ctx.fillStyle = unlocked ? '#FFF9C4' : '#F5F5F5';
+                ctx.beginPath();
+                ctx.roundRect(100, y, 600, 60, 10);
+                ctx.fill();
+                ctx.strokeStyle = unlocked ? '#FFD700' : '#CCC';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                // Icon
+                ctx.font = '28px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(ach.icon, 120, y + 38);
+                // Name
+                ctx.fillStyle = unlocked ? '#333' : '#888';
+                ctx.font = 'bold 18px Arial';
+                ctx.fillText(ach.name, 170, y + 25);
+                // Desc
+                ctx.fillStyle = '#888';
+                ctx.font = '14px Arial';
+                ctx.fillText(ach.desc, 170, y + 45);
+                // Reward
+                if (unlocked) {
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'right';
+                    const rewardText = ach.reward.type === 'stars' ? `+${ach.reward.val}★` : `+${ach.reward.val}`;
+                    ctx.fillText(rewardText, 680, y + 35);
+                    ctx.textAlign = 'left';
+                }
+                y += 70;
+            });
+            // Close button
+            ctx.fillStyle = '#9C27B0';
+            ctx.beginPath();
+            ctx.roundRect(350, 530, 100, 40, 10);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('关闭', 400, 558);
+        }
     }
 
     // ==================== Item Shop ====================
     class ItemShop {
-        constructor(canvas, ctx, audio, starManager, onClose) {
+        constructor(canvas, ctx, audio, starManager, achievementManager, onClose) {
             this.canvas = canvas;
             this.ctx = ctx;
             this.audio = audio;
             this.starManager = starManager;
+            this.achievementManager = achievementManager;
             this.onClose = onClose;
             this.buttons = [];
             this.buyResults = [];
@@ -361,6 +534,8 @@
                 if (this.starManager.getStars() >= 10) {
                     const result = this.starManager.gacha();
                     if (result) {
+                        this.starManager.incrementGacha();
+                        this.achievementManager.checkAndAward();
                         const itemDef = ITEM_DEFS.find(i => i.id === result);
                         this.gachaResult = itemDef ? itemDef.name : result;
                         this.gachaTimer = 120;
@@ -651,7 +826,7 @@
 
     // ==================== Home Screen ====================
     class HomeScreen {
-        constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop) {
+        constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, achievementManager, onOpenAchievements) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
@@ -659,6 +834,8 @@
             this.starManager = starManager;
             this.onSelectGame = onSelectGame;
             this.onOpenShop = onOpenShop;
+            this.achievementManager = achievementManager;
+            this.onOpenAchievements = onOpenAchievements;
             this.audioInitialized = false;
             this.games = [
                 { id: 'shape', name: '形状匹配', icon: 'shape' },
@@ -716,6 +893,12 @@
             if (pos.x >= 680 && pos.x <= 780 && pos.y >= 20 && pos.y <= 70) {
                 this.audio.playSound('select');
                 this.onOpenShop();
+                return;
+            }
+            // Achievement button (top center)
+            if (pos.x >= 540 && pos.x <= 620 && pos.y >= 20 && pos.y <= 64) {
+                this.audio.playSound('select');
+                this.onOpenAchievements();
                 return;
             }
             for (let i = 0; i < this.buttons.length; i++) {
@@ -801,7 +984,22 @@
             ctx.fill();
             ctx.fillStyle = '#FFF';
             ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center';
             ctx.fillText('商店', 730, 52);
+
+            // Achievement button (top center)
+            const achUnlocked = Object.values(this.achievementManager.load()).filter(v => v).length;
+            const achTotal = this.achievementManager.achievements.length + this.achievementManager.suitSets.length;
+            ctx.fillStyle = '#9C27B0';
+            ctx.beginPath();
+            ctx.roundRect(540, 20, 80, 44, 10);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🏆', 560, 36);
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(`${achUnlocked}/${achTotal}`, 595, 36);
 
             // Draw stars
             ctx.fillStyle = '#FFD700';
@@ -809,7 +1007,6 @@
             this.drawStar(650, 80, 12);
             this.drawStar(380, 90, 10);
         }
-
         drawCloud(x, y, size) {
             const ctx = this.ctx;
             ctx.beginPath();
@@ -2185,6 +2382,7 @@ init() {
             this.audio = new AudioManager();
             this.saveManager = new SaveManager();
             this.starManager = new StarManager();
+            this.achievementManager = new AchievementManager(this.starManager);
             this.currentScreen = 'home';
             this.currentGame = null;
             this.victoryModal = null;
@@ -2210,20 +2408,31 @@ init() {
             this.currentGame = null;
             this.victoryModal = null;
             this.itemShop = null;
+            this.achievementPanel = null;
             this.homeScreen = new HomeScreen(
                 this.canvas,
                 this.audio,
                 this.saveManager,
                 this.starManager,
                 (gameId) => this.startGame(gameId),
-                () => this.openShop()
+                () => this.openShop(),
+                this.achievementManager,
+                () => this.showAchievements()
             );
+        }
+
+        showAchievements() {
+            this.currentScreen = 'achievements';
+            this.homeScreen = null;
+            this.itemShop = null;
+            this.achievementPanel = new AchievementPanel(this.ctx, this.achievementManager, () => this.showHome());
         }
 
         openShop() {
             this.currentScreen = 'shop';
             this.homeScreen = null;
-            this.itemShop = new ItemShop(this.canvas, this.ctx, this.audio, this.starManager, () => this.showHome());
+            this.achievementPanel = null;
+            this.itemShop = new ItemShop(this.canvas, this.ctx, this.audio, this.starManager, this.achievementManager, () => this.showHome());
         }
 
         startGame(gameId) {
@@ -2267,10 +2476,16 @@ init() {
         }
 
 showVictory() {
-            // Award star on first completion
-            if (!this.saveManager.isCompleted(this.currentGame ? 'shape' : this.currentGame ? 'color' : 'maze')) {
+            // Award star on first completion, track for achievements
+            const gameId = this.currentGame && this.currentGame.constructor.name === 'ShapeMatchGame' ? 'shape' :
+                           this.currentGame && this.currentGame.constructor.name === 'ColorSortGame' ? 'color' : 'maze';
+            const isFirst = !this.saveManager.isCompleted(gameId);
+            if (isFirst) {
                 this.starManager.addStars(1);
+                this.starManager.addTotalStarsEarned(1);
             }
+            this.starManager.incrementGameComplete(gameId);
+            this.achievementManager.checkAndAward();
             this.victoryModal = new VictoryModal(
                 this.ctx,
                 () => this.replayGame(),
@@ -2303,6 +2518,12 @@ showVictory() {
                     this.audio.playSound('select');
                     this.showHome();
                 }
+                return;
+            }
+
+            if (this.achievementPanel) {
+                this.achievementPanel.handleClick(x, y);
+                return;
             }
         }
 
@@ -2320,6 +2541,9 @@ showVictory() {
             if (this.itemShop) {
                 this.itemShop.update();
             }
+            if (this.achievementPanel) {
+                // no update needed
+            }
 
             // Draw
             this.ctx.clearRect(0, 0, 800, 600);
@@ -2335,6 +2559,9 @@ showVictory() {
             }
             if (this.itemShop) {
                 this.itemShop.draw();
+            }
+            if (this.achievementPanel) {
+                this.achievementPanel.draw();
             }
 
             requestAnimationFrame(() => this.gameLoop());
