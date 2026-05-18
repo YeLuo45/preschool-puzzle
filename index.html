@@ -1245,25 +1245,25 @@
             this.starManager.useItem(itemId);
             if (itemId === 'shape_hint') {
                 this.hintActive = true;
-                this.hintTimer = 300;
+                this.hintTimer = itemId.includes('_plus') ? 600 : 300;
                 this.audio.playSound('select');
             } else if (itemId === 'time_pause') {
                 this.paused = !this.paused;
                 this.audio.playSound('select');
             } else if (itemId === 'time_slow') {
                 this.timeSlow = true;
-                this.timeSlowTimer = 600;
+                this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
                 this.audio.playSound('select');
             } else if (itemId === 'double_points') {
                 this.doublePoints = true;
                 this.setupItemButtons();
                 return true;
             } else if (itemId === 'shield') {
-                this.shieldActive = true;
+                this.shieldActive = (this.shieldActive || 0) + (itemId.includes('_plus') ? 2 : 1);
                 this.audio.playSound('select');
             } else if (itemId === 'reveal_answer') {
                 this.revealActive = true;
-                this.revealTimer = 300;
+                this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
                 this.audio.playSound('select');
             }
             this.setupItemButtons();
@@ -1346,8 +1346,9 @@
                                 }, 500);
                             }
                         } else {
-                            if (this.shieldActive) {
-                                this.shieldActive = false;
+                            if (this.shieldActive && this.shieldActive > 0) {
+                                this.shieldActive--;
+                                if (this.shieldActive <= 0) this.shieldActive = false;
                                 this.audio.playSound('select');
                             } else {
                                 this.audio.playSound('error');
@@ -1495,7 +1496,8 @@
                 ctx.setLineDash([]);
                 ctx.fillStyle = '#4CAF50';
                 ctx.font = 'bold 14px Arial';
-                ctx.fillText('🛡 护盾激活', 90, 155);
+                const shieldCount = typeof this.shieldActive === 'number' ? this.shieldActive : 1;
+                ctx.fillText(`🛡 护盾激活 x${shieldCount}`, 90, 155);
                 ctx.restore();
             }
 
@@ -1644,8 +1646,30 @@
                 this.audio.playSound('select');
             } else if (itemId === 'reveal_answer') {
                 this.revealActive = true;
-                this.revealTimer = 300;
+                this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
                 this.audio.playSound('select');
+            } else if (itemId === 'color_magnifier') {
+                if (this.selectedCandy !== null) {
+                    this.highlightColor = this.candies[this.selectedCandy].colorIndex;
+                    this.highlightTimer = itemId.includes('_plus') ? 240 : 120;
+                }
+                this.audio.playSound('select');
+            } else if (itemId === 'sort_assist') {
+                for (let i = 0; i < this.candies.length; i++) {
+                    if (this.candies[i].matched) continue;
+                    for (let j = i + 1; j < this.candies.length; j++) {
+                        if (this.candies[j].matched) continue;
+                        if (this.candies[i].colorIndex === this.candies[j].colorIndex) {
+                            this.assistTarget = [i, j];
+                            this.assistTimer = itemId.includes('_plus') ? 360 : 180;
+                            this.audio.playSound('success');
+                            this.setupItemButtons();
+                            return true;
+                        }
+                    }
+                }
+                this.starManager.addItem(itemId);
+                return false;
             }
             this.setupItemButtons();
             return true;
@@ -1706,8 +1730,9 @@
                             this.fallingProgress = 0;
                             this.selectedCandy = null;
                         } else {
-                            if (this.shieldActive) {
-                                this.shieldActive = false;
+                            if (this.shieldActive && this.shieldActive > 0) {
+                                this.shieldActive--;
+                                if (this.shieldActive <= 0) this.shieldActive = false;
                                 this.audio.playSound('select');
                             } else {
                                 this.audio.playSound('error');
@@ -2043,27 +2068,27 @@
             if (!this.starManager.hasItem(itemId)) return false;
             this.starManager.useItem(itemId);
             if (itemId === 'map_fragment') {
-                // Show path from current position to exit (up to 3 steps)
+                const pathLen = itemId.includes('_plus') ? 9 : 3;
                 const path = this.findPath(this.player.x, this.player.y, this.exit.x, this.exit.y);
-                this.pathHighlight = path.slice(0, 3);
+                this.pathHighlight = path.slice(0, pathLen);
                 this.audio.playSound('select');
             } else if (itemId === 'wall_soften') {
-                this.canPhase = true;
+                this.canPhase = itemId.includes('_plus') ? 'permanent' : true;
                 this.audio.playSound('select');
             } else if (itemId === 'time_slow') {
                 this.timeSlow = true;
-                this.timeSlowTimer = 600;
+                this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
                 this.audio.playSound('select');
             } else if (itemId === 'double_points') {
                 this.doublePoints = true;
                 this.setupItemButtons();
                 return true;
             } else if (itemId === 'shield') {
-                this.shieldActive = true;
+                this.shieldActive = (this.shieldActive || 0) + (itemId.includes('_plus') ? 2 : 1);
                 this.audio.playSound('select');
             } else if (itemId === 'reveal_answer') {
                 this.revealActive = true;
-                this.revealTimer = 300;
+                this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
                 this.audio.playSound('select');
             }
             this.setupItemButtons();
