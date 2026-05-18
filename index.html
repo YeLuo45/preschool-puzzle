@@ -681,6 +681,7 @@
             this.currentTab = 'items'; // 'items' or 'fusion'
             this.dailyDeals = this.generateDailyDeals();
             this.dealTimer = this.getTimeUntilMidnight();
+            this.weeklyBundle = this.generateWeeklyBundle();
             this.initButtons();
             canvas.addEventListener('click', e => this.handleClick(e));
         }
@@ -694,6 +695,31 @@
             const midnight = new Date(now);
             midnight.setHours(24, 0, 0, 0);
             return Math.floor((midnight - now) / 1000);
+        }
+        generateWeeklyBundle() {
+            const allItems = ITEM_DEFS.filter(i => !i.holiday && !i.id.includes('_plus'));
+            const shuffled = allItems.sort(() => Math.random() - 0.5);
+            const bundleItems = shuffled.slice(0, 5);
+            const totalCost = bundleItems.reduce((sum, i) => sum + i.cost, 0);
+            return {
+                items: bundleItems,
+                cost: 500,
+                originalCost: totalCost * 3,
+                purchased: localStorage.getItem('preschool_puzzle_weekly_bundle') === this.getWeekKey()
+            };
+        }
+        getWeekKey() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const week = Math.ceil((now.getDate()) / 7);
+            return `${year}-W${week}`;
+        }
+        getTimeUntilSunday() {
+            const now = new Date();
+            const sunday = new Date(now);
+            sunday.setDate(now.getDate() + (7 - now.getDay()) % 7);
+            sunday.setHours(23, 59, 59, 999);
+            return Math.floor((sunday - now) / 1000);
         }
         initButtons() {
             const items = itemRegistry.list();
@@ -726,6 +752,22 @@
             const rect = this.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (800 / rect.width);
             const y = (e.clientY - rect.top) * (600 / rect.height);
+            // Weekly bundle click
+            if (!this.weeklyBundle.purchased && x >= 20 && x <= 260 && y >= 80 && y <= 180) {
+                if (this.starManager.spendStars(this.weeklyBundle.cost)) {
+                    this.weeklyBundle.items.forEach(item => {
+                        for (let i = 0; i < 3; i++) this.starManager.addItem(item.id);
+                    });
+                    localStorage.setItem('preschool_puzzle_weekly_bundle', this.getWeekKey());
+                    this.weeklyBundle.purchased = true;
+                    this.audio.playSound('success');
+                    this.buyResults.push({ text: '获得每周Bundle!', color: '#FF9800', y: 140 });
+                    this.resultTimer = 60;
+                } else {
+                    this.audio.playSound('error');
+                }
+                return;
+            }
             // Tab buttons
             if (x >= this.itemsTabBtn.x - 40 && x <= this.itemsTabBtn.x + 40 &&
                 y >= this.itemsTabBtn.y - 18 && y <= this.itemsTabBtn.y + 18) {
@@ -882,6 +924,41 @@
                 // Store discounted cost for purchase
                 deal._buyCost = discountedCost;
             });
+            // Weekly bundle
+            const wb = this.weeklyBundle;
+            const daysLeft = Math.ceil(this.getTimeUntilSunday() / 86400);
+            ctx.fillStyle = '#FF9800';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`📦 每周Bundle (还剩${daysLeft}天)`, 140, 70);
+            ctx.fillStyle = wb.purchased ? '#4CAF50' : '#FFF3E0';
+            ctx.beginPath();
+            ctx.roundRect(20, 80, 240, 100, 12);
+            ctx.fill();
+            ctx.strokeStyle = '#FF9800';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            if (wb.purchased) {
+                ctx.fillStyle = '#4CAF50';
+                ctx.font = 'bold 18px Arial';
+                ctx.fillText('✓ 已购买', 140, 125);
+                ctx.fillStyle = '#888';
+                ctx.font = '14px Arial';
+                ctx.fillText('下周再来', 140, 150);
+            } else {
+                ctx.fillStyle = '#333';
+                ctx.font = '14px Arial';
+                ctx.fillText(wb.items.map(i => i.name).join(' + '), 140, 110);
+                ctx.fillStyle = '#F44336';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(`~~${wb.originalCost}~~`, 100, 135);
+                ctx.fillStyle = '#4CAF50';
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(`${wb.cost}★`, 160, 135);
+                ctx.fillStyle = '#FF9800';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText('立即购买', 140, 160);
+            }
             // Tab buttons
             ctx.fillStyle = this.currentTab === 'items' ? '#4CAF50' : '#CCC';
             ctx.beginPath();
