@@ -216,6 +216,8 @@
         { id: 'reveal_answer', name: '答案之书', desc: '显示解法提示', cost: 6, game: 'all', effect: 'reveal' },
         { id: 'lucky_charm', name: '幸运符咒', desc: '50%概率额外得星', cost: 150, game: 'all', effect: 'lucky' },
         { id: 'time_bank', name: '时间银行', desc: '存储时间，困难时取出', cost: 200, game: 'all', effect: 'timebank' },
+        { id: 'speed_gear', name: '加速齿轮', desc: '下一步速度翻倍', cost: 100, game: 'all', effect: 'speed' },
+        { id: 'memory_crystal', name: '记忆水晶', desc: '显示最近操作记录', cost: 120, game: 'maze', effect: 'memory' },
     ];
 
     const itemRegistry = new ToolRegistry();
@@ -1491,7 +1493,9 @@
                 { id: 'shield', label: '🛡', x: 720, y: 110 },
                 { id: 'reveal_answer', label: '📖', x: 770, y: 110 },
                 { id: 'lucky_charm', label: '🍀', x: 720, y: 150 },
-                { id: 'time_bank', label: '🏦', x: 770, y: 150 }
+                { id: 'time_bank', label: '🏦', x: 770, y: 150 },
+                { id: 'speed_gear', label: '⚙️', x: 720, y: 190 },
+                { id: 'memory_crystal', label: '💎', x: 770, y: 190 }
             ];
             items.forEach(item => {
                 const count = this.starManager.getItemCount(item.id);
@@ -1508,7 +1512,9 @@
                 shield: { active: false, count: this.shieldActive || 0 },
                 reveal_answer: { active: false, timer: 0 },
                 lucky_charm: { active: false },
-                time_bank: { active: false, stored: 0 }
+                time_bank: { active: false, stored: 0 },
+                speed_gear: { active: false },
+                memory_crystal: { active: false }
             };
         }
 
@@ -1554,6 +1560,14 @@
                     if (this.itemStatus) this.itemStatus.time_bank.stored = 5;
                     this.audio.playSound('select');
                 }
+            } else if (itemId === 'speed_gear') {
+                this.speedGearActive = true;
+                if (this.itemStatus) this.itemStatus.speed_gear = { active: true };
+                this.audio.playSound('select');
+            } else if (itemId === 'memory_crystal') {
+                this.memoryCrystalActive = true;
+                if (this.itemStatus) this.itemStatus.memory_crystal = { active: true };
+                this.audio.playSound('select');
             }
             this.setupItemButtons();
             return true;
