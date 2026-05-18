@@ -377,20 +377,25 @@
                     const m = this.starManager.getGameCompleteCount('maze');
                     return s + c + m >= 1;
                 }},
-                { id: 'shape_master', name: '形状大师', desc: '完成形状游戏5次', icon: '🔷', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('shape') >= 5 },
-                { id: 'color_master', name: '颜色大师', desc: '完成颜色游戏5次', icon: '🌈', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('color') >= 5 },
-                { id: 'maze_master', name: '迷宫大师', desc: '完成迷宫游戏5次', icon: '🗺️', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('maze') >= 5 },
+                { id: 'shape_player', name: '形状玩家', desc: '完成形状游戏5次', icon: '🔷', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('shape') >= 5 },
+                { id: 'color_player', name: '颜色玩家', desc: '完成颜色游戏5次', icon: '🌈', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('color') >= 5 },
+                { id: 'maze_player', name: '迷宫玩家', desc: '完成迷宫游戏5次', icon: '🗺️', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('maze') >= 5 },
                 { id: 'collector', name: '收藏家', desc: '拥有全部6种道具', icon: '🏆', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getUniqueItemTypes() >= 6 },
                 { id: 'streak_7', name: '连续签到', desc: '连续签到7天', icon: '📅', reward: { type: 'item', val: 'shape_hint' }, condition: () => this.starManager.getStreak() >= 7 },
                 { id: 'star_50', name: '星星收集者', desc: '累计获得50⭐', icon: '💎', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getTotalStarsEarned() >= 50 },
                 { id: 'gacha_10', name: '扭蛋达人', desc: '扭蛋10次', icon: '🎰', reward: { type: 'item', val: 'upgrade_ticket' }, condition: () => this.starManager.getGachaCount() >= 10 },
             ];
             this.suitSets = [
-                { id: 'all_plus', name: '全能助手', desc: '拥有全部6种强化版道具', reward: { type: 'stars', val: 10 }, condition: () => {
-                    const plusItems = ['shape_hint_plus', 'time_pause_plus', 'color_magnifier_plus', 'sort_assist_plus', 'map_fragment_plus', 'wall_soften_plus'];
+                { id: 'shape_master', name: '形状大师', desc: '拥有shape_hint和shape_hint_plus', icon: '🔷', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getItemCount('shape_hint_plus') > 0 },
+                { id: 'time_controller', name: '时间大师', desc: '拥有time_slow和time_slow_plus', icon: '⏰', reward: { type: 'stars', val: 8 }, condition: () => this.starManager.getItemCount('time_slow_plus') > 0 },
+                { id: 'shield_king', name: '护盾之王', desc: '拥有shield和shield_plus', icon: '🛡', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getItemCount('shield_plus') > 0 },
+                { id: 'color_expert', name: '色彩专家', desc: '拥有color_magnifier_plus和sort_assist_plus', icon: '🌈', reward: { type: 'stars', val: 8 }, condition: () => this.starManager.getItemCount('color_magnifier_plus') > 0 && this.starManager.getItemCount('sort_assist_plus') > 0 },
+                { id: 'maze_master', name: '迷宫大师', desc: '拥有map_fragment_plus和wall_soften_plus', icon: '🗺️', reward: { type: 'stars', val: 8 }, condition: () => this.starManager.getItemCount('map_fragment_plus') > 0 && this.starManager.getItemCount('wall_soften_plus') > 0 },
+                { id: 'all_plus', name: '全能大师', desc: '拥有全部8种强化版道具', icon: '🌟', reward: { type: 'stars', val: 20 }, condition: () => {
+                    const plusItems = ['shape_hint_plus', 'time_pause_plus', 'time_slow_plus', 'shield_plus', 'reveal_answer_plus', 'color_magnifier_plus', 'sort_assist_plus', 'map_fragment_plus', 'wall_soften_plus'];
                     return plusItems.every(i => this.starManager.getItemCount(i) > 0);
                 }},
-                { id: 'starter', name: '入门套装', desc: '首次拥有3种以上道具', reward: { type: 'stars', val: 2 }, condition: () => this.starManager.getUniqueItemTypes() >= 3 },
+                { id: 'starter', name: '入门套装', desc: '首次拥有3种以上道具', icon: '🎁', reward: { type: 'stars', val: 2 }, condition: () => this.starManager.getUniqueItemTypes() >= 3 },
             ];
         }
         load() {
