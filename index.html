@@ -314,6 +314,17 @@
                 localStorage.setItem('preschool_puzzle_season', JSON.stringify(data));
             }
         }
+        claimSeasonReward(taskId) {
+            const data = this.getSeasonData();
+            if (!data || data.rewards[taskId]) return false;
+            const task = data.tasks[taskId];
+            if (!task || task.current < task.target) return false;
+            data.rewards[taskId] = true;
+            // Reward: 100 stars per task
+            this.addStars(100);
+            localStorage.setItem('preschool_puzzle_season', JSON.stringify(data));
+            return true;
+        }
         hasItem(itemId) {
             try {
                 return JSON.parse(localStorage.getItem('preschool_puzzle_item_history') || '[]');
@@ -568,8 +579,18 @@
             this.ctx = ctx;
             this.challengeManager = challengeManager;
             this.onClose = onClose;
+            this.rewardButtons = [];
         }
         handleClick(x, y) {
+            // Season reward buttons
+            for (const btn of this.rewardButtons) {
+                if (x >= btn.x - 50 && x <= btn.x + 50 && y >= btn.y - 15 && y <= btn.y + 15) {
+                    if (this.challengeManager.starManager?.claimSeasonReward(btn.taskId)) {
+                        this.challengeManager.starManager.addStars(100);
+                    }
+                    return;
+                }
+            }
             if (y >= 530 && y <= 570 && x >= 350 && x <= 450) {
                 this.onClose();
             }
@@ -601,15 +622,34 @@
                 Object.entries(seasonData.tasks || {}).forEach(([key, task], i) => {
                     const taskNames = { gamesPlayed: '游戏局数', starsCollected: '收集星辰', itemsUsed: '使用道具' };
                     const taskX = 130 + i * 200;
+                    const taskY = 165;
+                    const taskWidth = 150;
                     ctx.fillStyle = '#333';
                     ctx.font = '14px Arial';
                     ctx.textAlign = 'left';
                     ctx.fillText(taskNames[key] || key, taskX, 155);
+                    const progress = Math.min(task.current / task.target, 1);
                     ctx.fillStyle = '#4CAF50';
-                    ctx.fillRect(taskX, 165, (task.current / task.target) * 150, 12);
+                    ctx.fillRect(taskX, taskY, progress * taskWidth, 12);
+                    ctx.strokeStyle = '#2E7D32';
+                    ctx.strokeRect(taskX, taskY, taskWidth, 12);
                     ctx.fillStyle = '#888';
                     ctx.font = '12px Arial';
-                    ctx.fillText(`${task.current}/${task.target}`, taskX, 195);
+                    ctx.fillText(`${task.current}/${task.target}`, taskX, taskY + 24);
+                    // Reward button
+                    const claimed = seasonData.rewards?.[key];
+                    const canClaim = task.current >= task.target && !claimed;
+                    ctx.fillStyle = canClaim ? '#FF9800' : (claimed ? '#9E9E9E' : '#E0E0E0');
+                    ctx.beginPath();
+                    ctx.roundRect(taskX + taskWidth - 40, taskY - 5, 50, 22, 6);
+                    ctx.fill();
+                    ctx.fillStyle = '#FFF';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(claimed ? '✓' : '领', taskX + taskWidth - 15, taskY + 11);
+                    if (canClaim) {
+                        this.rewardButtons.push({ x: taskX + taskWidth - 15, y: taskY + 6, taskId: key });
+                    }
                 });
             }
             const data = this.challengeManager.getChallenges();
