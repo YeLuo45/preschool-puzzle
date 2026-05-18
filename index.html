@@ -1449,6 +1449,8 @@
             this.shieldActive = false;
             this.revealActive = false;
             this.revealTimer = 0;
+            this.luckyCharmActive = false;
+            this.timeBankStored = 0;
             // Item buttons
             this.itemButtons = [];
             this.init();
@@ -1484,7 +1486,9 @@
                 { id: 'time_slow', label: '⏳', x: 720, y: 70 },
                 { id: 'double_points', label: '✖2', x: 770, y: 70 },
                 { id: 'shield', label: '🛡', x: 720, y: 110 },
-                { id: 'reveal_answer', label: '📖', x: 770, y: 110 }
+                { id: 'reveal_answer', label: '📖', x: 770, y: 110 },
+                { id: 'lucky_charm', label: '🍀', x: 720, y: 150 },
+                { id: 'time_bank', label: '🏦', x: 770, y: 150 }
             ];
             items.forEach(item => {
                 const count = this.starManager.getItemCount(item.id);
@@ -1499,7 +1503,9 @@
                 time_slow: { active: false, timer: 0 },
                 double_points: { active: false, timer: 0 },
                 shield: { active: false, count: this.shieldActive || 0 },
-                reveal_answer: { active: false, timer: 0 }
+                reveal_answer: { active: false, timer: 0 },
+                lucky_charm: { active: false },
+                time_bank: { active: false, stored: 0 }
             };
         }
 
@@ -1535,6 +1541,16 @@
                 this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
                 if (this.itemStatus) this.itemStatus.reveal_answer = { active: true, timer: this.revealTimer };
                 this.audio.playSound('select');
+            } else if (itemId === 'lucky_charm') {
+                this.luckyCharmActive = true;
+                if (this.itemStatus) this.itemStatus.lucky_charm.active = true;
+                this.audio.playSound('select');
+            } else if (itemId === 'time_bank') {
+                if (!this.timeBankStored || this.timeBankStored < 5) {
+                    this.timeBankStored = 5;
+                    if (this.itemStatus) this.itemStatus.time_bank.stored = 5;
+                    this.audio.playSound('select');
+                }
             }
             this.setupItemButtons();
             return true;
