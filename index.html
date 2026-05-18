@@ -192,1077 +192,6 @@
         }
     }
 
-    // ==================== Tool Registry ====================
-    class ToolRegistry {
-        constructor() {
-            this.items = new Map();
-        }
-        register(id, item) { this.items.set(id, item); }
-        get(id) { return this.items.get(id); }
-        list() { return Array.from(this.items.values()); }
-        has(id) { return this.items.has(id); }
-    }
-
-    const ITEM_DEFS = [
-        { id: 'shape_hint', name: '形状提示', desc: '显示目标形状轮廓', cost: 2, game: 'shape', effect: 'hint' },
-        { id: 'time_pause', name: '时间暂停', desc: '本关暂停倒计时', cost: 3, game: 'shape', effect: 'pause' },
-        { id: 'color_magnifier', name: '颜色放大镜', desc: '高亮同色糖果', cost: 2, game: 'color', effect: 'highlight' },
-        { id: 'sort_assist', name: '排序助手', desc: '自动找到匹配对', cost: 3, game: 'color', effect: 'assist' },
-        { id: 'map_fragment', name: '地图碎片', desc: '显示路径3步', cost: 2, game: 'maze', effect: 'path' },
-        { id: 'wall_soften', name: '穿墙术', desc: '穿墙一次', cost: 3, game: 'maze', effect: 'phase' },
-        { id: 'time_slow', name: '减速沙漏', desc: '全局时间减速50%', cost: 8, game: 'all', effect: 'slow' },
-        { id: 'double_points', name: '双倍积分', desc: '下次完成双倍星星', cost: 12, game: 'all', effect: 'double' },
-        { id: 'shield', name: '护盾', desc: '免疫一次失误', cost: 10, game: 'all', effect: 'shield' },
-        { id: 'reveal_answer', name: '答案之书', desc: '显示解法提示', cost: 6, game: 'all', effect: 'reveal' },
-        { id: 'lucky_charm', name: '幸运符咒', desc: '50%概率额外得星', cost: 150, game: 'all', effect: 'lucky' },
-        { id: 'time_bank', name: '时间银行', desc: '存储时间，困难时取出', cost: 200, game: 'all', effect: 'timebank' },
-        { id: 'speed_gear', name: '加速齿轮', desc: '下一步速度翻倍', cost: 100, game: 'all', effect: 'speed' },
-        { id: 'memory_crystal', name: '记忆水晶', desc: '显示最近操作记录', cost: 120, game: 'maze', effect: 'memory' },
-        { id: 'firework', name: '烟花', desc: '庆祝特效+10星', cost: 50, game: 'all', effect: 'firework', holiday: true },
-        { id: 'star_rain', name: '星落', desc: '星星雨特效', cost: 80, game: 'all', effect: 'starrain', holiday: true },
-        { id: 'rainbow_boost', name: '彩虹加速', desc: '彩虹路径加速', cost: 60, game: 'all', effect: 'rainbow', holiday: true },
-    ];
-
-    const itemRegistry = new ToolRegistry();
-    ITEM_DEFS.forEach(item => itemRegistry.register(item.id, item));
-    // Plus versions auto-registered via upgrade logic
-
-    // ==================== Star Manager ====================
-    class StarManager {
-        constructor() {
-            this.key = 'preschool_puzzle_stars';
-            this.invKey = 'preschool_puzzle_inventory';
-            this.dailyKey = 'preschool_puzzle_last_login';
-            this.streakKey = 'preschool_puzzle_login_streak';
-            this.challengeManager = null;
-        }
-        setChallengeManager(cm) {
-            this.challengeManager = cm;
-        }
-        getStars() {
-            try { return parseInt(localStorage.getItem(this.key) || '0'); } catch { return 0; }
-        }
-        addStars(count) {
-            const cur = this.getStars();
-            localStorage.setItem(this.key, String(cur + count));
-            return this.getStars();
-        }
-        spendStars(count) {
-            const cur = this.getStars();
-            if (cur < count) return false;
-            localStorage.setItem(this.key, String(cur - count));
-            return true;
-        }
-        getInventory() {
-            try { return JSON.parse(localStorage.getItem(this.invKey) || '{}'); } catch { return {}; }
-        }
-        addItem(itemId) {
-            const inv = this.getInventory();
-            inv[itemId] = (inv[itemId] || 0) + 1;
-            localStorage.setItem(this.invKey, JSON.stringify(inv));
-            if (this.challengeManager) {
-                this.challengeManager.checkItemChallenge('collector_10');
-            }
-        }
-        useItem(itemId) {
-            const inv = this.getInventory();
-            if (!inv[itemId] || inv[itemId] <= 0) return false;
-            inv[itemId]--;
-            if (inv[itemId] <= 0) delete inv[itemId];
-            localStorage.setItem(this.invKey, JSON.stringify(inv));
-            // Track usage history
-            this.trackItemUsage(itemId);
-            return true;
-        }
-        trackItemUsage(itemId) {
-            try {
-                const historyKey = 'preschool_puzzle_item_history';
-                let history = JSON.parse(localStorage.getItem(historyKey) || '[]');
-                history.unshift({ id: itemId, time: Date.now() });
-                if (history.length > 50) history = history.slice(0, 50);
-                localStorage.setItem(historyKey, JSON.stringify(history));
-            } catch {}
-        }
-        // Season system
-        getSeasonData() {
-            try {
-                return JSON.parse(localStorage.getItem('preschool_puzzle_season') || 'null');
-            } catch { return null; }
-        }
-        initSeason() {
-            const now = new Date();
-            const seasonStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 4) * 4, 1);
-            const seasonEnd = new Date(now.getFullYear(), Math.floor(now.getMonth() / 4) * 4 + 4, 1);
-            const data = this.getSeasonData() || {};
-            if (!data.key || data.key !== seasonStart.toISOString()) {
-                data.key = seasonStart.toISOString();
-                data.end = seasonEnd.toISOString();
-                data.tasks = {
-                    gamesPlayed: { target: 20, current: data.tasks?.gamesPlayed?.current || 0 },
-                    starsCollected: { target: 500, current: data.tasks?.starsCollected?.current || 0 },
-                    itemsUsed: { target: 50, current: data.tasks?.itemsUsed?.current || 0 }
-                };
-                data.rewards = data.rewards || {};
-                localStorage.setItem('preschool_puzzle_season', JSON.stringify(data));
-            }
-            return data;
-        }
-        updateSeasonTask(task, amount) {
-            const data = this.getSeasonData() || this.initSeason();
-            if (data.tasks[task]) {
-                data.tasks[task].current = Math.min(data.tasks[task].current + amount, data.tasks[task].target);
-                localStorage.setItem('preschool_puzzle_season', JSON.stringify(data));
-            }
-        }
-        claimSeasonReward(taskId) {
-            const data = this.getSeasonData();
-            if (!data || data.rewards[taskId]) return false;
-            const task = data.tasks[taskId];
-            if (!task || task.current < task.target) return false;
-            data.rewards[taskId] = true;
-            // Reward: 100 stars per task
-            this.addStars(100);
-            localStorage.setItem('preschool_puzzle_season', JSON.stringify(data));
-            return true;
-        }
-        hasItem(itemId) {
-            try {
-                return JSON.parse(localStorage.getItem('preschool_puzzle_item_history') || '[]');
-            } catch { return []; }
-        }
-        hasItem(itemId) {
-            const inv = this.getInventory();
-            return (inv[itemId] || 0) > 0;
-        }
-        getItemCount(itemId) {
-            return this.getInventory()[itemId] || 0;
-        }
-        // Daily bonus
-        canClaimDailyBonus() {
-            const today = new Date().toDateString();
-            const last = localStorage.getItem(this.dailyKey);
-            return last !== today;
-        }
-        claimDailyBonus() {
-            if (!this.canClaimDailyBonus()) return false;
-            const today = new Date().toDateString();
-            localStorage.setItem(this.dailyKey, today);
-            // Update streak
-            const lastDate = localStorage.getItem(this.dailyKey + '_date');
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            const yStr = yesterday.toDateString();
-            let streak = 1;
-            if (lastDate === yStr) {
-                streak = parseInt(localStorage.getItem(this.streakKey) || '0') + 1;
-            }
-            localStorage.setItem(this.streakKey, String(streak));
-            localStorage.setItem(this.dailyKey + '_date', today);
-            this.addStars(1);
-            // Every 7 days give random item
-            if (streak > 0 && streak % 7 === 0) {
-                const items = ['shape_hint', 'time_pause', 'color_magnifier', 'sort_assist', 'map_fragment', 'wall_soften'];
-                this.addItem(items[Math.floor(Math.random() * items.length)]);
-            }
-            return true;
-        }
-        getStreak() {
-            return parseInt(localStorage.getItem(this.streakKey) || '0');
-        }
-        // Gacha: random item for 10 stars
-        gacha() {
-            if (!this.spendStars(10)) return null;
-            const items = ['shape_hint', 'time_pause', 'color_magnifier', 'sort_assist', 'map_fragment', 'wall_soften'];
-            const item = items[Math.floor(Math.random() * items.length)];
-            this.addItem(item);
-            return item;
-        }
-        // Upgrade: 3 same items -> upgraded version
-        canUpgrade(itemId) {
-            return this.getItemCount(itemId) >= 3 && !itemId.includes('_plus');
-        }
-        upgrade(itemId) {
-            if (!this.canUpgrade(itemId)) return null;
-            const inv = this.getInventory();
-            inv[itemId] -= 3;
-            if (inv[itemId] <= 0) delete inv[itemId];
-            const plusId = itemId + '_plus';
-            inv[plusId] = (inv[plusId] || 0) + 1;
-            localStorage.setItem(this.invKey, JSON.stringify(inv));
-            return plusId;
-        }
-        // Use upgrade ticket (instant upgrade, no materials)
-        useUpgradeTicket(itemId) {
-            if (!itemId.includes('_plus') && this.getItemCount(itemId) >= 1) {
-                const inv = this.getInventory();
-                inv[itemId]--;
-                if (inv[itemId] <= 0) delete inv[itemId];
-                const plusId = itemId + '_plus';
-                inv[plusId] = (inv[plusId] || 0) + 1;
-                localStorage.setItem(this.invKey, JSON.stringify(inv));
-                return plusId;
-            }
-            return null;
-        }
-        getUpgradeTicketCount() {
-            return this.getInventory()['upgrade_ticket'] || 0;
-        }
-        // Count unique item types (excluding plus versions)
-        getUniqueItemTypes() {
-            const inv = this.getInventory();
-            return Object.keys(inv).filter(k => !k.includes('_plus') && !k.includes('upgrade_ticket') && inv[k] > 0).length;
-        }
-        // Count total stars earned (tracked separately)
-        getTotalStarsEarned() {
-            return parseInt(localStorage.getItem('puzzle_total_stars') || '0');
-        }
-        addTotalStarsEarned(n) {
-            const cur = this.getTotalStarsEarned();
-            localStorage.setItem('puzzle_total_stars', String(cur + n));
-        }
-        // Game completion counters
-        getGameCompleteCount(gameId) {
-            return parseInt(localStorage.getItem('puzzle_complete_' + gameId) || '0');
-        }
-        incrementGameComplete(gameId) {
-            const cur = this.getGameCompleteCount(gameId);
-            localStorage.setItem('puzzle_complete_' + gameId, String(cur + 1));
-        }
-        // Gacha counter
-        getGachaCount() {
-            return parseInt(localStorage.getItem('puzzle_gacha_count') || '0');
-        }
-        incrementGacha() {
-            const cur = this.getGachaCount();
-            localStorage.setItem('puzzle_gacha_count', String(cur + 1));
-        }
-    }
-
-    // ==================== Achievement Manager ====================
-    class AchievementManager {
-        constructor(starManager) {
-            this.starManager = starManager;
-            this.key = 'puzzle_achievements';
-            this.achievements = [
-                { id: 'first_win', name: '初学者', desc: '完成任意游戏', icon: '🌟', reward: { type: 'stars', val: 2 }, condition: () => {
-                    const s = this.starManager.getGameCompleteCount('shape');
-                    const c = this.starManager.getGameCompleteCount('color');
-                    const m = this.starManager.getGameCompleteCount('maze');
-                    return s + c + m >= 1;
-                }},
-                { id: 'shape_player', name: '形状玩家', desc: '完成形状游戏5次', icon: '🔷', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('shape') >= 5 },
-                { id: 'color_player', name: '颜色玩家', desc: '完成颜色游戏5次', icon: '🌈', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('color') >= 5 },
-                { id: 'maze_player', name: '迷宫玩家', desc: '完成迷宫游戏5次', icon: '🗺️', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getGameCompleteCount('maze') >= 5 },
-                { id: 'collector', name: '收藏家', desc: '拥有全部6种道具', icon: '🏆', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getUniqueItemTypes() >= 6 },
-                { id: 'streak_7', name: '连续签到', desc: '连续签到7天', icon: '📅', reward: { type: 'item', val: 'shape_hint' }, condition: () => this.starManager.getStreak() >= 7 },
-                { id: 'star_50', name: '星星收集者', desc: '累计获得50⭐', icon: '💎', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getTotalStarsEarned() >= 50 },
-                { id: 'gacha_10', name: '扭蛋达人', desc: '扭蛋10次', icon: '🎰', reward: { type: 'item', val: 'upgrade_ticket' }, condition: () => this.starManager.getGachaCount() >= 10 },
-            ];
-            this.suitSets = [
-                { id: 'shape_master', name: '形状大师', desc: '拥有shape_hint和shape_hint_plus', icon: '🔷', reward: { type: 'stars', val: 5 }, condition: () => this.starManager.getItemCount('shape_hint_plus') > 0 },
-                { id: 'time_controller', name: '时间大师', desc: '拥有time_slow和time_slow_plus', icon: '⏰', reward: { type: 'stars', val: 8 }, condition: () => this.starManager.getItemCount('time_slow_plus') > 0 },
-                { id: 'shield_king', name: '护盾之王', desc: '拥有shield和shield_plus', icon: '🛡', reward: { type: 'stars', val: 3 }, condition: () => this.starManager.getItemCount('shield_plus') > 0 },
-                { id: 'color_expert', name: '色彩专家', desc: '拥有color_magnifier_plus和sort_assist_plus', icon: '🌈', reward: { type: 'stars', val: 8 }, condition: () => this.starManager.getItemCount('color_magnifier_plus') > 0 && this.starManager.getItemCount('sort_assist_plus') > 0 },
-                { id: 'maze_master', name: '迷宫大师', desc: '拥有map_fragment_plus和wall_soften_plus', icon: '🗺️', reward: { type: 'stars', val: 8 }, condition: () => this.starManager.getItemCount('map_fragment_plus') > 0 && this.starManager.getItemCount('wall_soften_plus') > 0 },
-                { id: 'all_plus', name: '全能大师', desc: '拥有全部8种强化版道具', icon: '🌟', reward: { type: 'stars', val: 20 }, condition: () => {
-                    const plusItems = ['shape_hint_plus', 'time_pause_plus', 'time_slow_plus', 'shield_plus', 'reveal_answer_plus', 'color_magnifier_plus', 'sort_assist_plus', 'map_fragment_plus', 'wall_soften_plus'];
-                    return plusItems.every(i => this.starManager.getItemCount(i) > 0);
-                }},
-                { id: 'starter', name: '入门套装', desc: '首次拥有3种以上道具', icon: '🎁', reward: { type: 'stars', val: 2 }, condition: () => this.starManager.getUniqueItemTypes() >= 3 },
-            ];
-        }
-        load() {
-            try { return JSON.parse(localStorage.getItem(this.key) || '{}'); } catch { return {}; }
-        }
-        save(data) {
-            localStorage.setItem(this.key, JSON.stringify(data));
-        }
-        checkAndAward() {
-            const data = this.load();
-            const all = [...this.achievements, ...this.suitSets];
-            all.forEach(a => {
-                if (!data[a.id] && a.condition()) {
-                    data[a.id] = true;
-                    this.award(a);
-                }
-            });
-            this.save(data);
-            return data;
-        }
-        award(ach) {
-            if (ach.reward.type === 'stars') {
-                this.starManager.addStars(ach.reward.val);
-                this.starManager.addTotalStarsEarned(ach.reward.val);
-            } else if (ach.reward.type === 'item') {
-                this.starManager.addItem(ach.reward.val);
-            }
-        }
-        isUnlocked(id) {
-            return this.load()[id] === true;
-        }
-    }
-
-    // ==================== Challenge Manager ====================
-    class ChallengeManager {
-        constructor(starManager, audio) {
-            this.starManager = starManager;
-            this.audio = audio;
-            this.key = 'puzzle_challenges';
-            this.weekKey = 'puzzle_challenge_week';
-            this.rewardPopup = null;
-        }
-        showRewardPopup(ch) {
-            this.rewardPopup = { text: `🎉 挑战完成: ${ch.name} +${ch.reward}★`, timer: 120 };
-            if (this.audio) this.audio.playSound('success');
-        }
-        update() {
-            if (this.rewardPopup && this.rewardPopup.timer > 0) {
-                this.rewardPopup.timer--;
-            }
-        }
-        getCurrentWeek() {
-            const now = new Date();
-            const start = new Date(now.getFullYear(), 0, 1);
-            return Math.floor((now - start) / (7 * 24 * 60 * 60 * 1000));
-        }
-        isFreshWeek() {
-            const last = parseInt(localStorage.getItem(this.weekKey) || '0');
-            return this.getCurrentWeek() !== last;
-        }
-        getChallenges() {
-            const week = this.getCurrentWeek();
-            const saved = localStorage.getItem(this.key + '_week_' + week);
-            if (saved) return JSON.parse(saved);
-            // Fresh challenges
-            const data = {
-                week: week,
-                challenges: [
-                    { id: 'shape_speed', name: '形状速度赛', desc: '3分钟内完成形状游戏', icon: '⚡', target: 'shape', timeLimit: 180, reward: 5, completed: false },
-                    { id: 'color_speed', name: '颜色速度赛', desc: '3分钟内完成颜色游戏', icon: '⚡', target: 'color', timeLimit: 180, reward: 5, completed: false },
-                    { id: 'maze_speed', name: '迷宫速度赛', desc: '3分钟内完成迷宫', icon: '⚡', target: 'maze', timeLimit: 180, reward: 5, completed: false },
-                    { id: 'collector_10', name: '收藏家', desc: '拥有10种以上道具', icon: '📦', target: 'item', count: 10, reward: 3, completed: false }
-                ]
-            };
-            localStorage.setItem(this.key + '_week_' + week, JSON.stringify(data));
-            localStorage.setItem(this.weekKey, week.toString());
-            return data;
-        }
-        checkChallenge(id, gameId, elapsed) {
-            const data = this.getChallenges();
-            const ch = data.challenges.find(c => c.id === id);
-            if (!ch || ch.completed) return;
-            if (ch.target === gameId && elapsed <= ch.timeLimit) {
-                ch.completed = true;
-                this.starManager.addStars(ch.reward);
-                this.starManager.addTotalStarsEarned(ch.reward);
-                localStorage.setItem(this.key + '_week_' + data.week, JSON.stringify(data));
-                this.showRewardPopup(ch);
-            }
-        }
-        checkItemChallenge(id) {
-            const data = this.getChallenges();
-            const ch = data.challenges.find(c => c.id === id);
-            if (!ch || ch.completed) return;
-            if (this.starManager.getUniqueItemTypes() >= ch.count) {
-                ch.completed = true;
-                this.starManager.addStars(ch.reward);
-                this.starManager.addTotalStarsEarned(ch.reward);
-                localStorage.setItem(this.key + '_week_' + data.week, JSON.stringify(data));
-                this.showRewardPopup(ch);
-            }
-        }
-    }
-
-    // ==================== Challenge Panel ====================
-    class ChallengePanel {
-        constructor(ctx, challengeManager, onClose) {
-            this.ctx = ctx;
-            this.challengeManager = challengeManager;
-            this.onClose = onClose;
-            this.rewardButtons = [];
-        }
-        handleClick(x, y) {
-            // Season reward buttons
-            for (const btn of this.rewardButtons) {
-                if (x >= btn.x - 50 && x <= btn.x + 50 && y >= btn.y - 15 && y <= btn.y + 15) {
-                    if (this.challengeManager.starManager?.claimSeasonReward(btn.taskId)) {
-                        this.challengeManager.starManager.addStars(100);
-                    }
-                    return;
-                }
-            }
-            if (y >= 530 && y <= 570 && x >= 350 && x <= 450) {
-                this.onClose();
-            }
-        }
-        draw() {
-            const ctx = this.ctx;
-            ctx.fillStyle = '#FFF8E7';
-            ctx.fillRect(0, 0, 800, 600);
-            ctx.fillStyle = '#333';
-            ctx.font = 'bold 28px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('⚡ 周挑战 #' + this.challengeManager.getCurrentWeek(), 400, 55);
-            ctx.font = '16px Arial';
-            ctx.fillStyle = '#888';
-            ctx.fillText('每周一刷新', 400, 85);
-            // Season display
-            const seasonData = this.challengeManager.starManager?.getSeasonData() || this.challengeManager.starManager?.initSeason();
-            if (seasonData) {
-                ctx.fillStyle = '#FF9800';
-                ctx.font = 'bold 18px Arial';
-                ctx.fillText('🏆 赛季进度', 400, 120);
-                ctx.fillStyle = '#FFF';
-                ctx.beginPath();
-                ctx.roundRect(100, 130, 600, 80, 12);
-                ctx.fill();
-                ctx.strokeStyle = '#FF9800';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                Object.entries(seasonData.tasks || {}).forEach(([key, task], i) => {
-                    const taskNames = { gamesPlayed: '游戏局数', starsCollected: '收集星辰', itemsUsed: '使用道具' };
-                    const taskX = 130 + i * 200;
-                    const taskY = 165;
-                    const taskWidth = 150;
-                    ctx.fillStyle = '#333';
-                    ctx.font = '14px Arial';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(taskNames[key] || key, taskX, 155);
-                    const progress = Math.min(task.current / task.target, 1);
-                    ctx.fillStyle = '#4CAF50';
-                    ctx.fillRect(taskX, taskY, progress * taskWidth, 12);
-                    ctx.strokeStyle = '#2E7D32';
-                    ctx.strokeRect(taskX, taskY, taskWidth, 12);
-                    ctx.fillStyle = '#888';
-                    ctx.font = '12px Arial';
-                    ctx.fillText(`${task.current}/${task.target}`, taskX, taskY + 24);
-                    // Reward button
-                    const claimed = seasonData.rewards?.[key];
-                    const canClaim = task.current >= task.target && !claimed;
-                    ctx.fillStyle = canClaim ? '#FF9800' : (claimed ? '#9E9E9E' : '#E0E0E0');
-                    ctx.beginPath();
-                    ctx.roundRect(taskX + taskWidth - 40, taskY - 5, 50, 22, 6);
-                    ctx.fill();
-                    ctx.fillStyle = '#FFF';
-                    ctx.font = 'bold 12px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(claimed ? '✓' : '领', taskX + taskWidth - 15, taskY + 11);
-                    if (canClaim) {
-                        this.rewardButtons.push({ x: taskX + taskWidth - 15, y: taskY + 6, taskId: key });
-                    }
-                });
-            }
-            const data = this.challengeManager.getChallenges();
-            let y = seasonData ? 240 : 130;
-            data.challenges.forEach(ch => {
-                ctx.fillStyle = ch.completed ? '#E8F5E9' : '#FFF';
-                ctx.beginPath();
-                ctx.roundRect(150, y - 25, 500, 70, 12);
-                ctx.fill();
-                ctx.strokeStyle = ch.completed ? '#4CAF50' : '#DDD';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.font = '32px Arial';
-                ctx.textAlign = 'left';
-                ctx.fillText(ch.icon, 170, y + 8);
-                ctx.fillStyle = '#333';
-                ctx.font = 'bold 18px Arial';
-                ctx.fillText(ch.name, 220, y - 5);
-                ctx.font = '14px Arial';
-                ctx.fillStyle = '#888';
-                ctx.fillText(ch.desc, 220, y + 18);
-                ctx.fillStyle = '#FFD700';
-                ctx.font = 'bold 16px Arial';
-                ctx.textAlign = 'right';
-                ctx.fillText('+' + ch.reward + '★', 630, y - 5);
-                ctx.textAlign = 'left';
-                ctx.fillStyle = ch.completed ? '#4CAF50' : '#FF5722';
-                ctx.font = ch.completed ? 'bold 16px Arial' : '14px Arial';
-                ctx.fillText(ch.completed ? '✅ 已完成' : '❌ 进行中', 550, y + 18);
-                y += 85;
-            });
-            ctx.fillStyle = '#666';
-            ctx.beginPath();
-            ctx.roundRect(350, 540, 100, 36, 8);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('关闭', 400, 565);
-        }
-    }
-
-    // ==================== Item Book Panel ====================
-    class ItemBookPanel {
-        constructor(ctx, starManager, onClose) {
-            this.ctx = ctx;
-            this.starManager = starManager;
-            this.onClose = onClose;
-        }
-        handleClick(x, y) {
-            if (y >= 530 && y <= 570 && x >= 350 && x <= 450) {
-                this.onClose();
-            }
-        }
-        draw() {
-            const ctx = this.ctx;
-            ctx.fillStyle = '#FFF8E7';
-            ctx.fillRect(0, 0, 800, 600);
-            ctx.fillStyle = '#333';
-            ctx.font = 'bold 28px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('📖 道具图鉴', 400, 50);
-            // Count
-            const inv = this.starManager.getInventory();
-            const owned = Object.keys(inv).filter(k => inv[k] > 0).length;
-            ctx.font = '16px Arial';
-            ctx.fillStyle = '#888';
-            ctx.fillText(`已收集: ${owned}/${ITEM_DEFS.length}`, 400, 80);
-            // Draw items in grid
-            const cols = 4;
-            const itemW = 160;
-            const itemH = 90;
-            const startX = 80;
-            const startY = 110;
-            const gap = 15;
-            ITEM_DEFS.forEach((item, i) => {
-                const col = i % cols;
-                const row = Math.floor(i / cols);
-                const x = startX + col * (itemW + gap);
-                const y = startY + row * (itemH + gap);
-                const hasItem = inv[item.id] > 0;
-                ctx.fillStyle = hasItem ? '#E8F5E9' : '#F5F5F5';
-                ctx.beginPath();
-                ctx.roundRect(x, y, itemW, itemH, 10);
-                ctx.fill();
-                ctx.strokeStyle = hasItem ? '#4CAF50' : '#DDD';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.font = '32px Arial';
-                ctx.textAlign = 'left';
-                ctx.fillText(hasItem ? '✅' : '❓', x + 10, y + 40);
-                ctx.fillStyle = hasItem ? '#333' : '#999';
-                ctx.font = 'bold 14px Arial';
-                ctx.fillText(hasItem ? item.name : '???', x + 50, y + 30);
-                ctx.font = '12px Arial';
-                ctx.fillStyle = '#888';
-                ctx.fillText(hasItem ? item.desc : '未获得', x + 50, y + 50);
-                if (hasItem) {
-                    ctx.fillStyle = '#FFD700';
-                    ctx.fillText(`x${inv[item.id]}`, x + 50, y + 70);
-                }
-            });
-            // Close button
-            ctx.fillStyle = '#666';
-            ctx.beginPath();
-            ctx.roundRect(350, 540, 100, 36, 8);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('关闭', 400, 565);
-        }
-    }
-
-    // ==================== Achievement Panel ====================
-    class AchievementPanel {
-        constructor(ctx, achievementManager, onClose) {
-            this.ctx = ctx;
-            this.achievementManager = achievementManager;
-            this.onClose = onClose;
-        }
-        handleClick(x, y) {
-            if (y >= 530 && y <= 570 && x >= 350 && x <= 450) {
-                this.onClose();
-            }
-        }
-        draw() {
-            const ctx = this.ctx;
-            ctx.fillStyle = '#FFF8E7';
-            ctx.fillRect(0, 0, 800, 600);
-            // Title
-            ctx.fillStyle = '#333';
-            ctx.font = 'bold 28px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('🏆 成就', 400, 60);
-            // Achievements
-            const all = [...this.achievementManager.achievements, ...this.achievementManager.suitSets];
-            let y = 120;
-            all.forEach((ach) => {
-                const unlocked = this.achievementManager.isUnlocked(ach.id);
-                ctx.fillStyle = unlocked ? '#FFF9C4' : '#F5F5F5';
-                ctx.beginPath();
-                ctx.roundRect(100, y, 600, 60, 10);
-                ctx.fill();
-                ctx.strokeStyle = unlocked ? '#FFD700' : '#CCC';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                // Icon
-                ctx.font = '28px Arial';
-                ctx.textAlign = 'left';
-                ctx.fillText(ach.icon, 120, y + 38);
-                // Name
-                ctx.fillStyle = unlocked ? '#333' : '#888';
-                ctx.font = 'bold 18px Arial';
-                ctx.fillText(ach.name, 170, y + 25);
-                // Desc
-                ctx.fillStyle = '#888';
-                ctx.font = '14px Arial';
-                ctx.fillText(ach.desc, 170, y + 45);
-                // Reward
-                if (unlocked) {
-                    ctx.fillStyle = '#4CAF50';
-                    ctx.font = 'bold 14px Arial';
-                    ctx.textAlign = 'right';
-                    const rewardText = ach.reward.type === 'stars' ? `+${ach.reward.val}★` : `+${ach.reward.val}`;
-                    ctx.fillText(rewardText, 680, y + 35);
-                    ctx.textAlign = 'left';
-                }
-                y += 70;
-            });
-            // Close button
-            ctx.fillStyle = '#9C27B0';
-            ctx.beginPath();
-            ctx.roundRect(350, 530, 100, 40, 10);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('关闭', 400, 558);
-        }
-    }
-
-    // ==================== Item Shop ====================
-    class ItemShop {
-        constructor(canvas, ctx, audio, starManager, achievementManager, onClose) {
-            this.canvas = canvas;
-            this.ctx = ctx;
-            this.audio = audio;
-            this.starManager = starManager;
-            this.achievementManager = achievementManager;
-            this.onClose = onClose;
-            this.buttons = [];
-            this.buyResults = [];
-            this.resultTimer = 0;
-            this.gachaResult = null;
-            this.gachaTimer = 0;
-            this.upgradeResult = null;
-            this.upgradeTimer = 0;
-            this.currentTab = 'items'; // 'items' or 'fusion'
-            this.dailyDeals = this.generateDailyDeals();
-            this.dealTimer = this.getTimeUntilMidnight();
-            this.weeklyBundle = this.generateWeeklyBundle();
-            this.initButtons();
-            canvas.addEventListener('click', e => this.handleClick(e));
-        }
-        generateDailyDeals() {
-            const allItems = ITEM_DEFS.filter(i => !i.holiday && !i.id.includes('_plus'));
-            const shuffled = allItems.sort(() => Math.random() - 0.5);
-            return shuffled.slice(0, 3).map(item => ({ ...item, label: item.name, discount: 0.7, originalCost: item.cost }));
-        }
-        getTimeUntilMidnight() {
-            const now = new Date();
-            const midnight = new Date(now);
-            midnight.setHours(24, 0, 0, 0);
-            return Math.floor((midnight - now) / 1000);
-        }
-        generateWeeklyBundle() {
-            const allItems = ITEM_DEFS.filter(i => !i.holiday && !i.id.includes('_plus'));
-            const shuffled = allItems.sort(() => Math.random() - 0.5);
-            const bundleItems = shuffled.slice(0, 5);
-            const totalCost = bundleItems.reduce((sum, i) => sum + i.cost, 0);
-            return {
-                items: bundleItems,
-                cost: 500,
-                originalCost: totalCost * 3,
-                purchased: localStorage.getItem('preschool_puzzle_weekly_bundle') === this.getWeekKey()
-            };
-        }
-        getWeekKey() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const week = Math.ceil((now.getDate()) / 7);
-            return `${year}-W${week}`;
-        }
-        getTimeUntilSunday() {
-            const now = new Date();
-            const sunday = new Date(now);
-            sunday.setDate(now.getDate() + (7 - now.getDay()) % 7);
-            sunday.setHours(23, 59, 59, 999);
-            return Math.floor((sunday - now) / 1000);
-        }
-        initButtons() {
-            const items = itemRegistry.list();
-            this.buttons = [];
-            this.fusionButtons = [];
-            let y = 160;
-            items.forEach((item, i) => {
-                const owned = this.starManager.getItemCount(item.id);
-                const canAfford = this.starManager.getStars() >= item.cost;
-                const canUpgrade = this.starManager.canUpgrade(item.id);
-                this.buttons.push({
-                    x: 400, y: y, width: 360, height: 60,
-                    item: item, owned: owned, canAfford: canAfford, canUpgrade: canUpgrade
-                });
-                // Fusion: show if owned >= 3
-                if (owned >= 3 && !item.id.includes('_plus')) {
-                    this.fusionButtons.push({
-                        x: 400, y: y, width: 360, height: 60,
-                        item: item, owned: owned
-                    });
-                    y += 70;
-                }
-            });
-            this.backBtn = { x: 400, y: 570, width: 120, height: 44 };
-            this.gachaBtn = { x: 400, y: 115, width: 160, height: 40 };
-            this.itemsTabBtn = { x: 200, y: 115, width: 80, height: 36 };
-            this.fusionTabBtn = { x: 300, y: 115, width: 80, height: 36 };
-        }
-        handleClick(e) {
-            const rect = this.canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) * (800 / rect.width);
-            const y = (e.clientY - rect.top) * (600 / rect.height);
-            // Weekly bundle click
-            if (!this.weeklyBundle.purchased && x >= 20 && x <= 260 && y >= 80 && y <= 180) {
-                if (this.starManager.spendStars(this.weeklyBundle.cost)) {
-                    this.weeklyBundle.items.forEach(item => {
-                        for (let i = 0; i < 3; i++) this.starManager.addItem(item.id);
-                    });
-                    localStorage.setItem('preschool_puzzle_weekly_bundle', this.getWeekKey());
-                    this.weeklyBundle.purchased = true;
-                    this.audio.playSound('success');
-                    this.buyResults.push({ text: '获得每周Bundle!', color: '#FF9800', y: 140 });
-                    this.resultTimer = 60;
-                } else {
-                    this.audio.playSound('error');
-                }
-                return;
-            }
-            // Tab buttons
-            if (x >= this.itemsTabBtn.x - 40 && x <= this.itemsTabBtn.x + 40 &&
-                y >= this.itemsTabBtn.y - 18 && y <= this.itemsTabBtn.y + 18) {
-                this.currentTab = 'items';
-                this.initButtons();
-                return;
-            }
-            if (x >= this.fusionTabBtn.x - 40 && x <= this.fusionTabBtn.x + 40 &&
-                y >= this.fusionTabBtn.y - 18 && y <= this.fusionTabBtn.y + 18) {
-                this.currentTab = 'fusion';
-                this.initButtons();
-                return;
-            }
-            // Fusion tab button clicks
-            if (this.currentTab === 'fusion') {
-                for (const btn of this.fusionButtons) {
-                    if (x >= btn.x - btn.width/2 && x <= btn.x + btn.width/2 &&
-                        y >= btn.y - btn.height/2 && y <= btn.y + btn.height/2) {
-                        const upgraded = this.starManager.upgrade(btn.item.id);
-                        if (upgraded) {
-                            this.upgradeResult = btn.item.name + ' → ' + upgraded;
-                            this.upgradeTimer = 120;
-                            this.audio.playSound('success');
-                            this.initButtons();
-                        }
-                        return;
-                    }
-                }
-                return;
-            }
-            // Gacha button
-            if (x >= this.gachaBtn.x - this.gachaBtn.width/2 && x <= this.gachaBtn.x + this.gachaBtn.width/2 &&
-                y >= this.gachaBtn.y - this.gachaBtn.height/2 && y <= this.gachaBtn.y + this.gachaBtn.height/2) {
-                if (this.starManager.getStars() >= 10) {
-                    const result = this.starManager.gacha();
-                    if (result) {
-                        this.starManager.incrementGacha();
-                        this.achievementManager.checkAndAward();
-                        const itemDef = ITEM_DEFS.find(i => i.id === result);
-                        this.gachaResult = itemDef ? itemDef.name : result;
-                        this.gachaTimer = 120;
-                        this.audio.playSound('success');
-                    }
-                } else {
-                    this.audio.playSound('error');
-                }
-                return;
-            }
-            // Back button
-            if (x >= this.backBtn.x - 60 && x <= this.backBtn.x + 60 &&
-                y >= this.backBtn.y - 22 && y <= this.backBtn.y + 22) {
-                this.audio.playSound('select');
-                this.onClose();
-                return;
-            }
-            // Item buttons
-            for (const btn of this.buttons) {
-                if (x >= btn.x - btn.width/2 && x <= btn.x + btn.width/2 &&
-                    y >= btn.y - btn.height/2 && y <= btn.y + btn.height/2) {
-                    // Upgrade check (click on owned item with 3+)
-                    if (btn.canUpgrade && !btn.owned) {
-                        // Can't happen, but safety
-                    }
-                    if (btn.owned >= 3 && this.starManager.canUpgrade(btn.item.id)) {
-                        const upgraded = this.starManager.upgrade(btn.item.id);
-                        if (upgraded) {
-                            this.upgradeResult = btn.item.name + ' → ' + upgraded;
-                            this.upgradeTimer = 120;
-                            this.audio.playSound('success');
-                            this.initButtons();
-                        }
-                        return;
-                    }
-                    if (!btn.owned && btn.canAfford) {
-                        if (this.starManager.spendStars(btn.item.cost)) {
-                            this.starManager.addItem(btn.item.id);
-                            btn.owned = true;
-                            btn.canAfford = this.starManager.getStars() >= btn.item.cost;
-                            this.audio.playSound('success');
-                            const itemDef = ITEM_DEFS.find(i => i.id === btn.item.id);
-                            this.buyResults.push({ text: `获得 ${itemDef ? itemDef.name : btn.item.id}!`, color: '#4CAF50', y: btn.y });
-                            this.resultTimer = 60;
-                        } else {
-                            this.audio.playSound('error');
-                        }
-                    } else if (!btn.owned) {
-                        this.audio.playSound('error');
-                    }
-                    return;
-                }
-            }
-        }
-        update() {
-            if (this.resultTimer > 0) this.resultTimer--;
-            if (this.gachaTimer > 0) this.gachaTimer--;
-            if (this.upgradeTimer > 0) this.upgradeTimer--;
-            if (this.dealTimer > 0) {
-                this.dealTimer--;
-                if (this.dealTimer <= 0) {
-                    this.dailyDeals = this.generateDailyDeals();
-                    this.dealTimer = 86400;
-                }
-            }
-        }
-        draw() {
-            const ctx = this.ctx;
-            ctx.clearRect(0, 0, 800, 600);
-            // BG
-            ctx.fillStyle = '#FFF8E7';
-            ctx.fillRect(0, 0, 800, 600);
-            // Title
-            ctx.fillStyle = COLORS.text;
-            ctx.font = 'bold 32px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('道具商店', 400, 60);
-            // Stars balance
-            const stars = this.starManager.getStars();
-            ctx.font = '22px Arial';
-            ctx.fillText(`★ ${stars}`, 400, 95);
-            // Daily deals
-            const hours = Math.floor(this.dealTimer / 3600);
-            const mins = Math.floor((this.dealTimer % 3600) / 60);
-            ctx.fillStyle = '#9C27B0';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText(`🎁 今日特惠 (${hours}h${mins}m)`, 620, 60);
-            this.dailyDeals.forEach((deal, i) => {
-                const dealX = 620;
-                const dealY = 80 + i * 55;
-                ctx.fillStyle = '#F3E5F5';
-                ctx.beginPath();
-                ctx.roundRect(dealX - 70, dealY - 20, 140, 50, 8);
-                ctx.fill();
-                ctx.strokeStyle = '#9C27B0';
-                ctx.lineWidth = 1;
-                ctx.stroke();
-                ctx.fillStyle = '#FFF';
-                ctx.beginPath();
-                ctx.arc(dealX + 55, dealY - 10, 14, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.fillStyle = '#9C27B0';
-                ctx.font = 'bold 12px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('7折', dealX + 55, dealY - 6);
-                ctx.fillStyle = '#333';
-                ctx.font = '14px Arial';
-                ctx.textAlign = 'left';
-                ctx.fillText(deal.label, dealX - 60, dealY - 5);
-                const discountedCost = Math.floor(deal.originalCost * deal.discount);
-                ctx.fillStyle = '#F44336';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText(`~~${deal.originalCost}~~`, dealX - 60, dealY + 12);
-                ctx.fillStyle = '#4CAF50';
-                ctx.fillText(`${discountedCost}★`, dealX - 60 + 45, dealY + 12);
-                // Store discounted cost for purchase
-                deal._buyCost = discountedCost;
-            });
-            // Weekly bundle
-            const wb = this.weeklyBundle;
-            const daysLeft = Math.ceil(this.getTimeUntilSunday() / 86400);
-            ctx.fillStyle = '#FF9800';
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`📦 每周Bundle (还剩${daysLeft}天)`, 140, 70);
-            ctx.fillStyle = wb.purchased ? '#4CAF50' : '#FFF3E0';
-            ctx.beginPath();
-            ctx.roundRect(20, 80, 240, 100, 12);
-            ctx.fill();
-            ctx.strokeStyle = '#FF9800';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            if (wb.purchased) {
-                ctx.fillStyle = '#4CAF50';
-                ctx.font = 'bold 18px Arial';
-                ctx.fillText('✓ 已购买', 140, 125);
-                ctx.fillStyle = '#888';
-                ctx.font = '14px Arial';
-                ctx.fillText('下周再来', 140, 150);
-            } else {
-                ctx.fillStyle = '#333';
-                ctx.font = '14px Arial';
-                ctx.fillText(wb.items.map(i => i.name).join(' + '), 140, 110);
-                ctx.fillStyle = '#F44336';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText(`~~${wb.originalCost}~~`, 100, 135);
-                ctx.fillStyle = '#4CAF50';
-                ctx.font = 'bold 16px Arial';
-                ctx.fillText(`${wb.cost}★`, 160, 135);
-                ctx.fillStyle = '#FF9800';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText('立即购买', 140, 160);
-            }
-            // Tab buttons
-            ctx.fillStyle = this.currentTab === 'items' ? '#4CAF50' : '#CCC';
-            ctx.beginPath();
-            ctx.roundRect(this.itemsTabBtn.x - 40, this.itemsTabBtn.y - 18, 80, 36, 8);
-            ctx.fill();
-            ctx.fillStyle = this.currentTab === 'fusion' ? '#FF5722' : '#CCC';
-            ctx.beginPath();
-            ctx.roundRect(this.fusionTabBtn.x - 40, this.fusionTabBtn.y - 18, 80, 36, 8);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText('购买', this.itemsTabBtn.x, this.itemsTabBtn.y + 5);
-            ctx.fillText('融合', this.fusionTabBtn.x, this.fusionTabBtn.y + 5);
-
-            if (this.currentTab === 'fusion') {
-                // Draw fusion tab
-                ctx.fillStyle = '#FF5722';
-                ctx.font = 'bold 20px Arial';
-                ctx.fillText('融合（3个同种 → 强化版）', 400, 155);
-                if (this.fusionButtons.length === 0) {
-                    ctx.fillStyle = '#888';
-                    ctx.font = '16px Arial';
-                    ctx.fillText('拥有3个以上道具时可融合', 400, 200);
-                }
-                this.fusionButtons.forEach(btn => {
-                    ctx.fillStyle = '#FFF9C4';
-                    ctx.beginPath();
-                    ctx.roundRect(btn.x - btn.width/2, btn.y - btn.height/2, btn.width, btn.height, 12);
-                    ctx.fill();
-                    ctx.strokeStyle = '#FF5722';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                    ctx.fillStyle = '#333';
-                    ctx.font = 'bold 20px Arial';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(btn.item.name + ' x' + btn.owned, btn.x - 160, btn.y);
-                    ctx.fillStyle = '#FF5722';
-                    ctx.font = 'bold 16px Arial';
-                    ctx.textAlign = 'right';
-                    ctx.fillText('点击融合', btn.x + 160, btn.y);
-                });
-                ctx.textAlign = 'center';
-            } else {
-            // Gacha button
-            const canGacha = stars >= 10;
-            ctx.fillStyle = canGacha ? '#FFD700' : '#CCC';
-            ctx.beginPath();
-            ctx.roundRect(this.gachaBtn.x - this.gachaBtn.width/2, this.gachaBtn.y - this.gachaBtn.height/2, this.gachaBtn.width, this.gachaBtn.height, 10);
-            ctx.fill();
-            ctx.fillStyle = canGacha ? '#333' : '#888';
-            ctx.font = 'bold 16px Arial';
-            ctx.fillText('🎰 扭蛋 10★', this.gachaBtn.x, this.gachaBtn.y + 6);
-            // Gacha result
-            if (this.gachaTimer > 0) {
-                ctx.globalAlpha = this.gachaTimer / 120;
-                ctx.fillStyle = '#FF6B6B';
-                ctx.font = 'bold 24px Arial';
-                ctx.fillText(`恭喜获得 ${this.gachaResult}!`, 400, 150);
-                ctx.globalAlpha = 1;
-            }
-            // Items
-            this.buttons.forEach(btn => {
-                const item = btn.item;
-                const owned = this.starManager.getItemCount(item.id);
-                const canUpgrade = this.starManager.canUpgrade(item.id);
-                // BG
-                ctx.fillStyle = canUpgrade ? '#FFF9C4' : (owned ? '#E8F5E9' : (this.starManager.getStars() >= item.cost ? '#FFF' : '#F5F5F5'));
-                ctx.beginPath();
-                ctx.roundRect(btn.x - btn.width/2, btn.y - btn.height/2, btn.width, btn.height, 12);
-                ctx.fill();
-                ctx.strokeStyle = canUpgrade ? '#FFC107' : (owned ? '#4CAF50' : (this.starManager.getStars() >= item.cost ? COLORS.primary : '#CCC'));
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                // Upgrade hint
-                if (canUpgrade) {
-                    ctx.fillStyle = '#FF8F00';
-                    ctx.font = 'bold 12px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('点击升级(+1)', btn.x, btn.y - 22);
-                }
-                // Name
-                ctx.fillStyle = COLORS.text;
-                ctx.font = 'bold 20px Arial';
-                ctx.textAlign = 'left';
-                ctx.fillText(item.name, btn.x - 160, btn.y - 8);
-                // Desc
-                ctx.font = '16px Arial';
-                ctx.fillStyle = '#888';
-                ctx.fillText(item.desc, btn.x - 160, btn.y + 18);
-                // Cost / owned
-                ctx.textAlign = 'right';
-                if (owned) {
-                    ctx.fillStyle = '#4CAF50';
-                    ctx.font = 'bold 18px Arial';
-                    ctx.fillText(`已拥有 ×${owned}`, btn.x + 160, btn.y + 5);
-                } else {
-                    ctx.fillStyle = this.starManager.getStars() >= item.cost ? '#FFB347' : '#E57373';
-                    ctx.font = 'bold 18px Arial';
-                    ctx.fillText(`★ ${item.cost}`, btn.x + 160, btn.y + 5);
-                }
-            });
-            // Upgrade result
-            if (this.upgradeTimer > 0) {
-                ctx.globalAlpha = this.upgradeTimer / 120;
-                ctx.fillStyle = '#FFC107';
-                ctx.font = 'bold 22px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(`升级成功: ${this.upgradeResult}`, 400, 530);
-                ctx.globalAlpha = 1;
-            }
-            // Back btn
-            ctx.fillStyle = COLORS.primary;
-            ctx.beginPath();
-            ctx.roundRect(this.backBtn.x - 60, this.backBtn.y - 22, 120, 44, 10);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 18px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('返回', this.backBtn.x, this.backBtn.y + 6);
-            // Buy results
-            if (this.resultTimer > 0) {
-                this.buyResults = this.buyResults.filter(r => {
-                    ctx.globalAlpha = this.resultTimer / 60;
-                    ctx.fillStyle = r.color;
-                    ctx.font = 'bold 20px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(r.text, 400, r.y - (60 - this.resultTimer) * 0.5);
-                    ctx.globalAlpha = 1;
-                    return this.resultTimer > 0;
-                });
-            }
-        }
-    }
-
     // ==================== Save Manager ====================
     class SaveManager {
         constructor() {
@@ -1388,32 +317,22 @@
 
     // ==================== Home Screen ====================
     class HomeScreen {
-constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, achievementManager, onOpenAchievements, onOpenChallenges, onOpenItemBook, onStartTimed) {
+        constructor(canvas, audio, saveManager, onSelectGame) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
-            this.starManager = starManager;
             this.onSelectGame = onSelectGame;
-            this.onOpenShop = onOpenShop;
-            this.achievementManager = achievementManager;
-            this.onOpenAchievements = onOpenAchievements;
-            this.onOpenChallenges = onOpenChallenges;
-            this.onOpenItemBook = onOpenItemBook;
-            this.onStartTimed = onStartTimed;
             this.audioInitialized = false;
             this.games = [
                 { id: 'shape', name: '形状匹配', icon: 'shape' },
                 { id: 'color', name: '颜色分类', icon: 'color' },
-                { id: 'maze', name: '简单迷宫', icon: 'maze' },
-                { id: 'timed', name: '限时挑战', icon: '⏱️', timed: true }
+                { id: 'maze', name: '简单迷宫', icon: 'maze' }
             ];
             this.buttons = [];
             this.hoveredIndex = -1;
             this.scale = 1;
             this.particles = [];
-            this.shopHovered = false;
-            this.timedHovered = false;
             this.init();
         }
 
@@ -1448,50 +367,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
         handleClick(e) {
             const pos = this.getMousePos(e);
-            // Daily bonus button (top left)
-            if (pos.x >= 20 && pos.x <= 150 && pos.y >= 20 && pos.y <= 64) {
-                if (this.starManager.canClaimDailyBonus()) {
-                    this.starManager.claimDailyBonus();
-                    this.audio.playSound('success');
-                }
-                return;
-            }
-            // Shop button (top right)
-            if (pos.x >= 680 && pos.x <= 780 && pos.y >= 20 && pos.y <= 70) {
-                this.audio.playSound('select');
-                this.onOpenShop();
-                return;
-            }
-            // Achievement button (top center)
-            if (pos.x >= 540 && pos.x <= 620 && pos.y >= 20 && pos.y <= 64) {
-                this.audio.playSound('select');
-                this.onOpenAchievements();
-                return;
-            }
-            // Challenge button (now below achievements row)
-            if (pos.x >= 490 && pos.x <= 570 && pos.y >= 75 && pos.y <= 119) {
-                this.audio.playSound('select');
-                if (this.onOpenChallenges) this.onOpenChallenges();
-                return;
-            }
-            // Timed Challenge button
-            if (pos.x >= 580 && pos.x <= 670 && pos.y >= 75 && pos.y <= 119) {
-                this.audio.playSound('select');
-                if (this.onStartTimed) this.onStartTimed();
-                return;
-            }
-            // Item Book button (to the left of achievements)
-            if (pos.x >= 460 && pos.x <= 530 && pos.y >= 20 && pos.y <= 64) {
-                this.audio.playSound('select');
-                if (this.onOpenItemBook) this.onOpenItemBook();
-                return;
-            }
-            // Shop button (top right)
-            if (pos.x >= 720 && pos.x <= 820 && pos.y >= 20 && pos.y <= 70) {
-                this.audio.playSound('select');
-                this.onOpenShop();
-                return;
-            }
             for (let i = 0; i < this.buttons.length; i++) {
                 const btn = this.buttons[i];
                 if (pos.x >= btn.x - btn.width/2 && pos.x <= btn.x + btn.width/2 &&
@@ -1510,9 +385,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
         handleMove(e) {
             const pos = this.getMousePos(e);
-            // Shop button hover
-            this.shopHovered = pos.x >= 680 && pos.x <= 780 && pos.y >= 20 && pos.y <= 70;
-            this.timedHovered = pos.x >= 580 && pos.x <= 670 && pos.y >= 75 && pos.y <= 119;
             let found = -1;
             for (let i = 0; i < this.buttons.length; i++) {
                 const btn = this.buttons[i];
@@ -1521,7 +393,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                 if (btn.hovered) found = i;
             }
             this.hoveredIndex = found;
-            this.canvas.style.cursor = (this.shopHovered || this.timedHovered || found >= 0) ? 'pointer' : 'default';
+            this.canvas.style.cursor = found >= 0 ? 'pointer' : 'default';
         }
 
         drawBackground() {
@@ -1541,99 +413,13 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             ctx.textAlign = 'center';
             ctx.fillText('幼儿益智解谜游戏', 400, 120);
 
-            // Draw stars balance (top right)
-            const stars = this.starManager.getStars();
-            ctx.fillStyle = '#FFB347';
-            ctx.font = 'bold 22px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`★ ${stars}`, 730, 52);
-
-            // Daily bonus button (top left)
-            if (this.starManager.canClaimDailyBonus()) {
-                ctx.fillStyle = '#4CAF50';
-                ctx.beginPath();
-                ctx.roundRect(20, 20, 130, 44, 10);
-                ctx.fill();
-                ctx.fillStyle = '#FFF';
-                ctx.font = 'bold 16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('📅 每日签到', 85, 50);
-                ctx.textAlign = 'left';
-            } else {
-                const streak = this.starManager.getStreak();
-                if (streak > 0) {
-                    ctx.fillStyle = '#888';
-                    ctx.font = '16px Arial';
-                    ctx.textAlign = 'left';
-                    ctx.fillText(`连续${streak}天`, 25, 50);
-                }
-            }
-
-            // Shop button (top right)
-            ctx.fillStyle = this.shopHovered ? '#E68A00' : COLORS.primary;
-            ctx.beginPath();
-            ctx.roundRect(680, 20, 100, 50, 12);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 18px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('商店', 730, 52);
-
-            // Achievement button (top center)
-            const achUnlocked = Object.values(this.achievementManager.load()).filter(v => v).length;
-            const achTotal = this.achievementManager.achievements.length + this.achievementManager.suitSets.length;
-            ctx.fillStyle = '#9C27B0';
-            ctx.beginPath();
-            ctx.roundRect(540, 20, 80, 44, 10);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('🏆', 560, 36);
-            ctx.font = 'bold 12px Arial';
-            ctx.fillText(`${achUnlocked}/${achTotal}`, 595, 36);
-
-            // Item Book button (between achievements and challenges)
-            ctx.fillStyle = '#9C27B0';
-            ctx.beginPath();
-            ctx.roundRect(610, 20, 70, 44, 10);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('📖', 630, 28);
-            ctx.font = 'bold 11px Arial';
-            ctx.fillText('图鉴', 645, 40);
-
-            // Challenge button (center-right)
-            ctx.fillStyle = '#FF5722';
-            ctx.beginPath();
-            ctx.roundRect(490, 75, 80, 44, 10);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('⚡', 510, 91);
-            ctx.font = 'bold 12px Arial';
-            ctx.fillText('挑战', 530, 91);
-
-            // Timed Challenge button (right of challenges)
-            ctx.fillStyle = '#E91E63';
-            ctx.beginPath();
-            ctx.roundRect(580, 75, 90, 44, 10);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText('⏱️', 605, 91);
-            ctx.font = 'bold 12px Arial';
-            ctx.fillText('限时挑战', 645, 91);
-
             // Draw stars
             ctx.fillStyle = '#FFD700';
             this.drawStar(150, 100, 15);
             this.drawStar(650, 80, 12);
             this.drawStar(380, 90, 10);
         }
+
         drawCloud(x, y, size) {
             const ctx = this.ctx;
             ctx.beginPath();
@@ -1793,12 +579,11 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
     // ==================== Shape Match Game ====================
     class ShapeMatchGame {
-        constructor(canvas, audio, saveManager, starManager, onBack, onComplete) {
+        constructor(canvas, audio, saveManager, onBack, onComplete) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
-            this.starManager = starManager;
             this.onBack = onBack;
             this.onComplete = onComplete;
             this.particles = [];
@@ -1808,25 +593,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.animProgress = 0;
             this.shapes = [];
             this.gridCells = [];
-// Item effects
-            this.hintActive = false;
-            this.hintTimer = 0;
-            this.paused = false;
-            this.timeSlow = false;
-            this.timeSlowTimer = 0;
-            this.doublePoints = false;
-            this.shieldActive = false;
-            this.revealActive = false;
-            this.revealTimer = 0;
-            this.luckyCharmActive = false;
-            this.timeBankStored = 0;
-            this.rainbowBoostActive = false;
-            this.fireworks = [];
-            this.starRainDrops = [];
-            this.itemCombo = 0;
-            this.lastItemUsed = null;
-            // Item buttons
-            this.itemButtons = [];
             this.init();
         }
 
@@ -1836,166 +602,10 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.selectedShape = null;
             this.selectedShapeIndex = null;
             this.matchedShapes = [];
-            this.slotContents = [-1, -1, -1, -1, -1, -1];
+            this.slotContents = [-1, -1, -1, -1, -1, -1]; // Track which source shape is in each slot
             this.particles = [];
-            this.hintActive = false;
-            this.hintTimer = 0;
-            this.paused = false;
-            this.timeSlow = false;
-            this.timeSlowTimer = 0;
-            this.doublePoints = false;
-            this.shieldActive = false;
-            this.revealActive = false;
-            this.revealTimer = 0;
-            this.setupItemButtons();
 
             this.canvas.onclick = (e) => this.handleClick(e);
-        }
-
-        setupItemButtons() {
-            this.itemButtons = [];
-            const items = [
-                { id: 'shape_hint', label: '💡', x: 720, y: 30 },
-                { id: 'time_pause', label: '⏸', x: 770, y: 30 },
-                { id: 'time_slow', label: '⏳', x: 720, y: 70 },
-                { id: 'double_points', label: '✖2', x: 770, y: 70 },
-                { id: 'shield', label: '🛡', x: 720, y: 110 },
-                { id: 'reveal_answer', label: '📖', x: 770, y: 110 },
-                { id: 'lucky_charm', label: '🍀', x: 720, y: 150 },
-                { id: 'time_bank', label: '🏦', x: 770, y: 150 },
-                { id: 'speed_gear', label: '⚙️', x: 720, y: 190 },
-                { id: 'memory_crystal', label: '💎', x: 770, y: 190 }
-            ];
-            items.forEach(item => {
-                const count = this.starManager.getItemCount(item.id);
-                if (count > 0) {
-                    this.itemButtons.push({ ...item, count });
-                }
-            });
-            // Item status tracking
-            this.itemStatus = {
-                shape_hint: { active: false, timer: 0 },
-                time_pause: { active: false },
-                time_slow: { active: false, timer: 0 },
-                double_points: { active: false, timer: 0 },
-                shield: { active: false, count: this.shieldActive || 0 },
-                reveal_answer: { active: false, timer: 0 },
-                lucky_charm: { active: false },
-                time_bank: { active: false, stored: 0 },
-                speed_gear: { active: false },
-                memory_crystal: { active: false }
-            };
-        }
-
-        useItem(itemId) {
-            if (!this.starManager.hasItem(itemId)) return false;
-            this.starManager.useItem(itemId);
-            if (itemId === 'shape_hint') {
-                this.hintActive = true;
-                this.hintTimer = itemId.includes('_plus') ? 600 : 300;
-                if (this.itemStatus) this.itemStatus.shape_hint = { active: true, timer: this.hintTimer };
-                this.audio.playSound('select');
-            } else if (itemId === 'time_pause') {
-                this.paused = !this.paused;
-                if (this.itemStatus) this.itemStatus.time_pause.active = this.paused;
-                this.audio.playSound('select');
-            } else if (itemId === 'time_slow') {
-                this.timeSlow = true;
-                this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
-                if (this.itemStatus) this.itemStatus.time_slow = { active: true, timer: this.timeSlowTimer };
-                this.audio.playSound('select');
-            } else if (itemId === 'double_points') {
-                this.doublePoints = true;
-                this.doublePointsTimer = 600;
-                if (this.itemStatus) this.itemStatus.double_points = { active: true, timer: 600 };
-                this.setupItemButtons();
-                return true;
-            } else if (itemId === 'shield') {
-                this.shieldActive = (this.shieldActive || 0) + (itemId.includes('_plus') ? 2 : 1);
-                if (this.itemStatus) this.itemStatus.shield = { active: this.shieldActive > 0, count: this.shieldActive };
-                this.audio.playSound('select');
-            } else if (itemId === 'reveal_answer') {
-                this.revealActive = true;
-                this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
-                if (this.itemStatus) this.itemStatus.reveal_answer = { active: true, timer: this.revealTimer };
-                this.audio.playSound('select');
-            } else if (itemId === 'lucky_charm') {
-                this.luckyCharmActive = true;
-                if (this.itemStatus) this.itemStatus.lucky_charm.active = true;
-                this.audio.playSound('select');
-            } else if (itemId === 'time_bank') {
-                if (!this.timeBankStored || this.timeBankStored < 5) {
-                    this.timeBankStored = 5;
-                    if (this.itemStatus) this.itemStatus.time_bank.stored = 5;
-                    this.audio.playSound('select');
-                }
-            } else if (itemId === 'speed_gear') {
-                this.speedGearActive = true;
-                if (this.itemStatus) this.itemStatus.speed_gear = { active: true };
-                this.audio.playSound('select');
-            } else if (itemId === 'memory_crystal') {
-                this.memoryCrystalActive = true;
-                if (this.itemStatus) this.itemStatus.memory_crystal = { active: true };
-                this.audio.playSound('select');
-            } else if (itemId === 'firework') {
-                this.triggerFirework();
-                this.starManager.addStars(10);
-            } else if (itemId === 'star_rain') {
-                this.triggerStarRain();
-            } else if (itemId === 'rainbow_boost') {
-                this.rainbowBoostActive = true;
-                if (this.itemStatus) this.itemStatus.rainbow_boost = { active: true };
-                this.audio.playSound('success');
-            }
-            // Item combo tracking
-            if (this.lastItemUsed && this.lastItemUsed !== itemId) {
-                this.itemCombo++;
-                if (this.itemCombo >= 3) {
-                    // Combo bonus!
-                    this.starManager.addStars(5);
-                    this.showComboPopup();
-                    this.itemCombo = 0;
-                }
-            } else if (this.lastItemUsed === itemId) {
-                this.itemCombo = 1;
-            }
-            this.lastItemUsed = itemId;
-            this.setupItemButtons();
-            return true;
-        }
-
-        showComboPopup() {
-            this.comboPopup = { text: '🎯 道具大师! +5★', timer: 120 };
-            if (this.audio) this.audio.playSound('success');
-        }
-
-        triggerFirework() {
-            this.fireworks = [];
-            for (let i = 0; i < 20; i++) {
-                this.fireworks.push({
-                    x: 100 + Math.random() * 600,
-                    y: 100 + Math.random() * 200,
-                    vx: (Math.random() - 0.5) * 8,
-                    vy: (Math.random() - 0.5) * 8,
-                    color: ['#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3', '#F38181'][Math.floor(Math.random() * 5)],
-                    life: 60 + Math.random() * 40
-                });
-            }
-            if (this.audio) this.audio.playSound('success');
-        }
-
-        triggerStarRain() {
-            this.starRainDrops = [];
-            for (let i = 0; i < 30; i++) {
-                this.starRainDrops.push({
-                    x: Math.random() * 800,
-                    y: -20 - Math.random() * 100,
-                    speed: 3 + Math.random() * 4,
-                    size: 4 + Math.random() * 6,
-                    twinkle: Math.random() * Math.PI * 2
-                });
-            }
-            if (this.audio) this.audio.playSound('success');
         }
 
         shuffle(arr) {
@@ -2016,16 +626,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
         handleClick(e) {
             const pos = this.getMousePos(e);
-
-            // Check item buttons
-            for (const btn of this.itemButtons) {
-                const dx = pos.x - btn.x;
-                const dy = pos.y - btn.y;
-                if (Math.abs(dx) < 25 && Math.abs(dy) < 20) {
-                    this.useItem(btn.id);
-                    return;
-                }
-            }
 
             // Check back button
             if (pos.x < 70 && pos.y < 50) {
@@ -2074,13 +674,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                                 }, 500);
                             }
                         } else {
-                            if (this.shieldActive && this.shieldActive > 0) {
-                                this.shieldActive--;
-                                if (this.shieldActive <= 0) this.shieldActive = false;
-                                this.audio.playSound('select');
-                            } else {
-                                this.audio.playSound('error');
-                            }
+                            this.audio.playSound('error');
                         }
                         return;
                     }
@@ -2095,27 +689,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                     this.animatingShape = null;
                 }
             }
-            if (this.hintActive) {
-                this.hintTimer--;
-                if (this.hintTimer <= 0) this.hintActive = false;
-                if (this.itemStatus) this.itemStatus.shape_hint.timer = this.hintTimer;
-            }
-            if (this.timeSlow && this.timeSlowTimer > 0) {
-                this.timeSlowTimer--;
-                if (this.timeSlowTimer <= 0) this.timeSlow = false;
-                if (this.itemStatus) this.itemStatus.time_slow.timer = this.timeSlowTimer;
-            }
-            if (this.doublePoints && this.doublePointsTimer > 0) {
-                this.doublePointsTimer--;
-                if (this.doublePointsTimer <= 0) this.doublePoints = false;
-                if (this.itemStatus) this.itemStatus.double_points.timer = this.doublePointsTimer;
-            }
-            if (this.revealActive) {
-                this.revealTimer--;
-                if (this.revealTimer <= 0) this.revealActive = false;
-                if (this.itemStatus) this.itemStatus.reveal_answer.timer = this.revealTimer;
-            }
-            if (this.itemStatus) this.itemStatus.shield.count = this.shieldActive || 0;
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
@@ -2126,49 +699,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             const ctx = this.ctx;
             ctx.fillStyle = COLORS.background;
             ctx.fillRect(0, 0, 800, 600);
-
-            // Item buttons (top right)
-            this.itemButtons.forEach(btn => {
-                const status = this.itemStatus ? this.itemStatus[btn.id] : null;
-                const isActive = status && (status.active || (status.timer > 0));
-                // Glow for active items
-                if (isActive) {
-                    ctx.save();
-                    ctx.shadowColor = '#FFD700';
-                    ctx.shadowBlur = 10;
-                    ctx.fillStyle = COLORS.primary;
-                    ctx.beginPath();
-                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                    ctx.fill();
-                    ctx.restore();
-                } else {
-                    ctx.fillStyle = COLORS.primary;
-                    ctx.beginPath();
-                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                    ctx.fill();
-                }
-                ctx.fillStyle = '#FFF';
-                ctx.font = '20px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(btn.label, btn.x, btn.y + 6);
-                ctx.fillStyle = '#FFD700';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
-                // Timer text
-                if (status && status.timer > 0) {
-                    ctx.fillStyle = '#4CAF50';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(Math.ceil(status.timer / 60) + 's', btn.x, btn.y + 32);
-                }
-                // Shield count
-                if (status && status.count !== undefined && status.count > 0) {
-                    ctx.fillStyle = '#FF5722';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`🛡${status.count}`, btn.x, btn.y + 32);
-                }
-            });
 
             // Title
             ctx.fillStyle = COLORS.text;
@@ -2224,105 +754,20 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                     // Empty slot - show expected shape outline in gray
                     const expectedShape = SHAPES[this.gridCells[i]];
                     drawShape(ctx, expectedShape, x, y, 50, '#CCC', false);
-                    // Hint effect: dashed glow
-                    if (this.hintActive) {
-                        ctx.save();
-                        ctx.strokeStyle = '#FFD700';
-                        ctx.lineWidth = 3;
-                        ctx.setLineDash([5, 5]);
-                        ctx.beginPath();
-                        ctx.arc(x, y, 35, 0, Math.PI * 2);
-                        ctx.stroke();
-                        ctx.setLineDash([]);
-                        ctx.restore();
-                    }
-                    // Reveal answer: show solution directly
-                    if (this.revealActive) {
-                        ctx.save();
-                        ctx.strokeStyle = '#9C27B0';
-                        ctx.lineWidth = 3;
-                        ctx.beginPath();
-                        ctx.arc(x, y, 35, 0, Math.PI * 2);
-                        ctx.stroke();
-                        ctx.fillStyle = 'rgba(156, 39, 176, 0.15)';
-                        ctx.fill();
-                        ctx.restore();
-                    }
                 }
             }
 
-            // Shield indicator
-            if (this.shieldActive) {
-                ctx.save();
-                ctx.strokeStyle = '#4CAF50';
-                ctx.lineWidth = 3;
-                ctx.setLineDash([8, 4]);
-                ctx.strokeRect(85, 135, 630, 380);
-                ctx.setLineDash([]);
-                ctx.fillStyle = '#4CAF50';
-                ctx.font = 'bold 14px Arial';
-                const shieldCount = typeof this.shieldActive === 'number' ? this.shieldActive : 1;
-                ctx.fillText(`🛡 护盾激活 x${shieldCount}`, 90, 155);
-                ctx.restore();
-            }
-
-// Progress
+            // Progress
             ctx.fillStyle = COLORS.text;
             ctx.font = '20px Arial';
             ctx.fillText(`已完成: ${this.matchedShapes.length}/6`, 400, 560);
 
             this.particles.forEach(p => p.draw(ctx));
-
-            // Draw fireworks effect
-            if (this.fireworks && this.fireworks.length > 0) {
-                this.fireworks = this.fireworks.filter(f => f.life > 0);
-                this.fireworks.forEach(f => {
-                    ctx.beginPath();
-                    ctx.fillStyle = f.color;
-                    ctx.globalAlpha = f.life / 100;
-                    ctx.arc(f.x, f.y, 4, 0, Math.PI * 2);
-                    ctx.fill();
-                    f.x += f.vx;
-                    f.y += f.vy;
-                    f.vy += 0.2;
-                    f.life--;
-                });
-                ctx.globalAlpha = 1;
-            }
-
-            // Draw star rain effect
-            if (this.starRainDrops && this.starRainDrops.length > 0) {
-                this.starRainDrops = this.starRainDrops.filter(d => d.y < 620);
-                this.starRainDrops.forEach(d => {
-                    ctx.save();
-                    ctx.fillStyle = '#FFD700';
-                    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(d.twinkle);
-                    const starPath = `⭐`;
-                    ctx.font = `${d.size * 2}px Arial`;
-                    ctx.fillText(starPath, d.x, d.y);
-                    d.y += d.speed;
-                    d.twinkle += 0.1;
-                    ctx.restore();
-                });
-            }
         }
 
         drawBackButton() {
             const ctx = this.ctx;
             ctx.fillStyle = COLORS.primary;
-            ctx.beginPath();
-            ctx.arc(40, 40, 25, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#FFF';
-            ctx.font = 'bold 20px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('←', 40, 40);
-        }
-    }
-
-    // ==================== Color Sort Game ====================
-    class ColorSortGame {
             ctx.beginPath();
             ctx.arc(40, 40, 25, 0, Math.PI * 2);
             ctx.fill();
@@ -2341,12 +786,11 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
     // ==================== Color Sort Game ====================
     class ColorSortGame {
-        constructor(canvas, audio, saveManager, starManager, onBack, onComplete) {
+        constructor(canvas, audio, saveManager, onBack, onComplete) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
-            this.starManager = starManager;
             this.onBack = onBack;
             this.onComplete = onComplete;
             this.particles = [];
@@ -2356,26 +800,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.animatingCandyIndex = null;
             this.animatingTargetCup = null;
             this.fallingProgress = 0;
-            // Item effects
-            this.highlightColor = null;
-            this.highlightTimer = 0;
-            this.assistTarget = null;
-            this.assistTimer = 0;
-            this.timeSlow = false;
-            this.timeSlowTimer = 0;
-            this.doublePoints = false;
-            this.shieldActive = false;
-            this.revealActive = false;
-            this.revealTimer = 0;
-            this.itemButtons = [];
-            this.itemStatus = {
-                shape_hint: { active: false, timer: 0 },
-                time_pause: { active: false },
-                time_slow: { active: false, timer: 0 },
-                double_points: { active: false, timer: 0 },
-                shield: { active: false, count: 0 },
-                reveal_answer: { active: false, timer: 0 }
-            };
             this.init();
         }
 
@@ -2394,108 +818,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.selectedCandy = null;
             this.cupCandies = [0, 0, 0, 0];
             this.particles = [];
-            this.highlightColor = null;
-            this.highlightTimer = 0;
-            this.assistTarget = null;
-            this.assistTimer = 0;
-            this.timeSlow = false;
-            this.timeSlowTimer = 0;
-            this.doublePoints = false;
-            this.shieldActive = false;
-            this.revealActive = false;
-            this.revealTimer = 0;
-            this.setupItemButtons();
             this.canvas.onclick = (e) => this.handleClick(e);
-        }
-
-        setupItemButtons() {
-            this.itemButtons = [];
-            const items = [
-                { id: 'color_magnifier', label: '🔍', x: 720, y: 30 },
-                { id: 'sort_assist', label: '✨', x: 770, y: 30 },
-                { id: 'time_slow', label: '⏳', x: 720, y: 70 },
-                { id: 'double_points', label: '✖2', x: 770, y: 70 },
-                { id: 'shield', label: '🛡', x: 720, y: 110 },
-                { id: 'reveal_answer', label: '📖', x: 770, y: 110 }
-            ];
-            items.forEach(item => {
-                const count = this.starManager.getItemCount(item.id);
-                if (count > 0) {
-                    this.itemButtons.push({ ...item, count });
-                }
-            });
-        }
-
-        useItem(itemId) {
-            if (!this.starManager.hasItem(itemId)) return false;
-            this.starManager.useItem(itemId);
-            if (itemId === 'color_magnifier') {
-                if (this.selectedCandy !== null) {
-                    this.highlightColor = this.candies[this.selectedCandy].colorIndex;
-                    this.highlightTimer = 120;
-                }
-                this.audio.playSound('select');
-            } else if (itemId === 'sort_assist') {
-                // Find first matching pair
-                for (let i = 0; i < this.candies.length; i++) {
-                    if (this.candies[i].matched) continue;
-                    for (let j = i + 1; j < this.candies.length; j++) {
-                        if (this.candies[j].matched) continue;
-                        if (this.candies[i].colorIndex === this.candies[j].colorIndex) {
-                            this.assistTarget = [i, j];
-                            this.assistTimer = 180;
-                            this.audio.playSound('success');
-                            this.setupItemButtons();
-                            return true;
-                        }
-                    }
-                }
-                this.starManager.addItem(itemId); // refund if no pair
-                return false;
-            } else if (itemId === 'time_slow') {
-                this.timeSlow = true;
-                this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
-                if (this.itemStatus) this.itemStatus.time_slow = { active: true, timer: this.timeSlowTimer };
-                this.audio.playSound('select');
-            } else if (itemId === 'double_points') {
-                this.doublePoints = true;
-                if (this.itemStatus) this.itemStatus.double_points = { active: true, timer: 600 };
-                this.setupItemButtons();
-                return true;
-            } else if (itemId === 'shield') {
-                this.shieldActive = true;
-                if (this.itemStatus) this.itemStatus.shield = { active: true, count: 1 };
-                this.audio.playSound('select');
-            } else if (itemId === 'reveal_answer') {
-                this.revealActive = true;
-                this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
-                if (this.itemStatus) this.itemStatus.reveal_answer = { active: true, timer: this.revealTimer };
-                this.audio.playSound('select');
-            } else if (itemId === 'color_magnifier') {
-                if (this.selectedCandy !== null) {
-                    this.highlightColor = this.candies[this.selectedCandy].colorIndex;
-                    this.highlightTimer = itemId.includes('_plus') ? 240 : 120;
-                }
-                this.audio.playSound('select');
-            } else if (itemId === 'sort_assist') {
-                for (let i = 0; i < this.candies.length; i++) {
-                    if (this.candies[i].matched) continue;
-                    for (let j = i + 1; j < this.candies.length; j++) {
-                        if (this.candies[j].matched) continue;
-                        if (this.candies[i].colorIndex === this.candies[j].colorIndex) {
-                            this.assistTarget = [i, j];
-                            this.assistTimer = itemId.includes('_plus') ? 360 : 180;
-                            this.audio.playSound('success');
-                            this.setupItemButtons();
-                            return true;
-                        }
-                    }
-                }
-                this.starManager.addItem(itemId);
-                return false;
-            }
-            this.setupItemButtons();
-            return true;
         }
 
         getMousePos(e) {
@@ -2508,16 +831,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
         handleClick(e) {
             const pos = this.getMousePos(e);
-
-            // Check item buttons
-            for (const btn of this.itemButtons) {
-                const dx = pos.x - btn.x;
-                const dy = pos.y - btn.y;
-                if (Math.abs(dx) < 25 && Math.abs(dy) < 20) {
-                    this.useItem(btn.id);
-                    return;
-                }
-            }
 
             // Back button
             if (pos.x < 70 && pos.y < 50) {
@@ -2553,13 +866,7 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                             this.fallingProgress = 0;
                             this.selectedCandy = null;
                         } else {
-                            if (this.shieldActive && this.shieldActive > 0) {
-                                this.shieldActive--;
-                                if (this.shieldActive <= 0) this.shieldActive = false;
-                                this.audio.playSound('select');
-                            } else {
-                                this.audio.playSound('error');
-                            }
+                            this.audio.playSound('error');
                         }
                         return;
                     }
@@ -2596,25 +903,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                     }
                 }
             }
-            if (this.highlightColor !== null) {
-                this.highlightTimer--;
-                if (this.highlightTimer <= 0) this.highlightColor = null;
-            }
-            if (this.assistTarget !== null) {
-                this.assistTimer--;
-                if (this.assistTimer <= 0) this.assistTarget = null;
-            }
-            if (this.timeSlow && this.timeSlowTimer > 0) {
-                this.timeSlowTimer--;
-                if (this.timeSlowTimer <= 0) this.timeSlow = false;
-                if (this.itemStatus) this.itemStatus.time_slow.timer = this.timeSlowTimer;
-            }
-            if (this.revealActive) {
-                this.revealTimer--;
-                if (this.revealTimer <= 0) this.revealActive = false;
-                if (this.itemStatus) this.itemStatus.reveal_answer.timer = this.revealTimer;
-            }
-            if (this.itemStatus) this.itemStatus.shield.count = this.shieldActive || 0;
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
@@ -2625,46 +913,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             const ctx = this.ctx;
             ctx.fillStyle = COLORS.background;
             ctx.fillRect(0, 0, 800, 600);
-
-            // Item buttons (top right)
-            this.itemButtons.forEach(btn => {
-                const status = this.itemStatus ? this.itemStatus[btn.id] : null;
-                const isActive = status && (status.active || (status.timer > 0));
-                if (isActive) {
-                    ctx.save();
-                    ctx.shadowColor = '#FFD700';
-                    ctx.shadowBlur = 10;
-                    ctx.fillStyle = COLORS.primary;
-                    ctx.beginPath();
-                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                    ctx.fill();
-                    ctx.restore();
-                } else {
-                    ctx.fillStyle = COLORS.primary;
-                    ctx.beginPath();
-                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                    ctx.fill();
-                }
-                ctx.fillStyle = '#FFF';
-                ctx.font = '20px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(btn.label, btn.x, btn.y + 6);
-                ctx.fillStyle = '#FFD700';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
-                if (status && status.timer > 0) {
-                    ctx.fillStyle = '#4CAF50';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(Math.ceil(status.timer / 60) + 's', btn.x, btn.y + 32);
-                }
-                if (status && status.count !== undefined && status.count > 0) {
-                    ctx.fillStyle = '#FF5722';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`🛡${status.count}`, btn.x, btn.y + 32);
-                }
-            });
 
             // Title
             ctx.fillStyle = COLORS.text;
@@ -2717,34 +965,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                 ctx.fill();
 
                 ctx.restore();
-
-                // Highlight effect for color_magnifier
-                if (this.highlightColor !== null && candy.colorIndex === this.highlightColor) {
-                    ctx.save();
-                    ctx.strokeStyle = '#FFD700';
-                    ctx.lineWidth = 3;
-                    ctx.shadowColor = '#FFD700';
-                    ctx.shadowBlur = 15;
-                    ctx.beginPath();
-                    ctx.arc(candy.x, y, 30, 0, Math.PI * 2);
-                    ctx.stroke();
-                    ctx.restore();
-                }
-
-                // Assist effect for sort_assist
-                if (this.assistTarget !== null && (this.assistTarget[0] === i || this.assistTarget[1] === i)) {
-                    ctx.save();
-                    ctx.strokeStyle = '#00FF00';
-                    ctx.lineWidth = 3;
-                    ctx.shadowColor = '#00FF00';
-                    ctx.shadowBlur = 20;
-                    const pulse = Math.sin(Date.now() / 100) * 0.2 + 0.8;
-                    ctx.globalAlpha = pulse;
-                    ctx.beginPath();
-                    ctx.arc(candy.x, y, 35, 0, Math.PI * 2);
-                    ctx.stroke();
-                    ctx.restore();
-                }
             });
 
             // Falling candy animation
@@ -2839,12 +1059,11 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
     // ==================== Maze Game ====================
     class MazeGame {
-        constructor(canvas, audio, saveManager, starManager, onBack, onComplete) {
+        constructor(canvas, audio, saveManager, onBack, onComplete) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
             this.saveManager = saveManager;
-            this.starManager = starManager;
             this.onBack = onBack;
             this.onComplete = onComplete;
             this.particles = [];
@@ -2858,24 +1077,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.direction = null;
             this.bumpTime = 0;
             this.victory = false;
-            // Item effects
-            this.pathHighlight = [];
-            this.canPhase = false;
-            this.timeSlow = false;
-            this.timeSlowTimer = 0;
-            this.doublePoints = false;
-            this.shieldActive = false;
-            this.revealActive = false;
-            this.revealTimer = 0;
-            this.itemButtons = [];
-            this.itemStatus = {
-                shape_hint: { active: false, timer: 0 },
-                time_pause: { active: false },
-                time_slow: { active: false, timer: 0 },
-                double_points: { active: false, timer: 0 },
-                shield: { active: false, count: 0 },
-                reveal_answer: { active: false, timer: 0 }
-            };
             this.controlButtons = [
                 { dir: 'up', x: 700, y: 200 },
                 { dir: 'down', x: 700, y: 320 },
@@ -2892,89 +1093,8 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.moving = false;
             this.bumpTime = 0;
             this.victory = false;
-            this.pathHighlight = [];
-            this.canPhase = false;
-            this.timeSlow = false;
-            this.timeSlowTimer = 0;
-            this.doublePoints = false;
-            this.shieldActive = false;
-            this.revealActive = false;
-            this.revealTimer = 0;
-            this.setupItemButtons();
             this.canvas.onclick = (e) => this.handleClick(e);
             this.canvas.onkeydown = (e) => this.handleKey(e);
-        }
-
-        setupItemButtons() {
-            this.itemButtons = [];
-            const items = [
-                { id: 'map_fragment', label: '🗺️', x: 720, y: 30 },
-                { id: 'wall_soften', label: '👻', x: 770, y: 30 },
-                { id: 'time_slow', label: '⏳', x: 720, y: 70 },
-                { id: 'double_points', label: '✖2', x: 770, y: 70 },
-                { id: 'shield', label: '🛡', x: 720, y: 110 },
-                { id: 'reveal_answer', label: '📖', x: 770, y: 110 }
-            ];
-            items.forEach(item => {
-                const count = this.starManager.getItemCount(item.id);
-                if (count > 0) {
-                    this.itemButtons.push({ ...item, count });
-                }
-            });
-        }
-
-        useItem(itemId) {
-            if (!this.starManager.hasItem(itemId)) return false;
-            this.starManager.useItem(itemId);
-            if (itemId === 'map_fragment') {
-                const pathLen = itemId.includes('_plus') ? 9 : 3;
-                const path = this.findPath(this.player.x, this.player.y, this.exit.x, this.exit.y);
-                this.pathHighlight = path.slice(0, pathLen);
-                this.audio.playSound('select');
-            } else if (itemId === 'wall_soften') {
-                this.canPhase = itemId.includes('_plus') ? 'permanent' : true;
-                this.audio.playSound('select');
-            } else if (itemId === 'time_slow') {
-                this.timeSlow = true;
-                this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
-                if (this.itemStatus) this.itemStatus.time_slow = { active: true, timer: this.timeSlowTimer };
-                this.audio.playSound('select');
-            } else if (itemId === 'double_points') {
-                this.doublePoints = true;
-                if (this.itemStatus) this.itemStatus.double_points = { active: true, timer: 600 };
-                this.setupItemButtons();
-                return true;
-            } else if (itemId === 'shield') {
-                this.shieldActive = (this.shieldActive || 0) + (itemId.includes('_plus') ? 2 : 1);
-                if (this.itemStatus) this.itemStatus.shield = { active: this.shieldActive > 0, count: this.shieldActive };
-                this.audio.playSound('select');
-            } else if (itemId === 'reveal_answer') {
-                this.revealActive = true;
-                this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
-                this.audio.playSound('select');
-            }
-            this.setupItemButtons();
-            return true;
-        }
-
-        findPath(sx, sy, ex, ey) {
-            const queue = [{ x: sx, y: sy, path: [] }];
-            const visited = new Set();
-            visited.add(`${sx},${sy}`);
-            while (queue.length > 0) {
-                const curr = queue.shift();
-                if (curr.x === ex && curr.y === ey) return curr.path;
-                for (const [dx, dy] of [[0,-1], [0,1], [-1,0], [1,0]]) {
-                    const nx = curr.x + dx;
-                    const ny = curr.y + dy;
-                    const key = `${nx},${ny}`;
-                    if (!visited.has(key) && this.maze[ny] && this.maze[ny][nx] === 0) {
-                        visited.add(key);
-                        queue.push({ x: nx, y: ny, path: [...curr.path, { x: nx, y: ny }] });
-                    }
-                }
-            }
-            return [];
         }
 
         generateMaze() {
@@ -3026,16 +1146,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             if (this.victory) return;
 
             const pos = this.getMousePos(e);
-
-            // Item buttons
-            for (const btn of this.itemButtons) {
-                const dx = pos.x - btn.x;
-                const dy = pos.y - btn.y;
-                if (Math.abs(dx) < 25 && Math.abs(dy) < 20) {
-                    this.useItem(btn.id);
-                    return;
-                }
-            }
 
             // Back button
             if (pos.x < 70 && pos.y < 50) {
@@ -3139,13 +1249,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
 
             if (this.bumpTime > 0) this.bumpTime--;
 
-            if (this.timeSlow && this.timeSlowTimer > 0) {
-                this.timeSlowTimer--;
-                if (this.timeSlowTimer <= 0) this.timeSlow = false;
-                if (this.itemStatus) this.itemStatus.time_slow.timer = this.timeSlowTimer;
-            }
-            if (this.itemStatus) this.itemStatus.shield.count = this.shieldActive || 0;
-
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
@@ -3156,46 +1259,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             const ctx = this.ctx;
             ctx.fillStyle = COLORS.background;
             ctx.fillRect(0, 0, 800, 600);
-
-            // Item buttons (top right)
-            this.itemButtons.forEach(btn => {
-                const status = this.itemStatus ? this.itemStatus[btn.id] : null;
-                const isActive = status && (status.active || (status.timer > 0));
-                if (isActive) {
-                    ctx.save();
-                    ctx.shadowColor = '#FFD700';
-                    ctx.shadowBlur = 10;
-                    ctx.fillStyle = COLORS.primary;
-                    ctx.beginPath();
-                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                    ctx.fill();
-                    ctx.restore();
-                } else {
-                    ctx.fillStyle = COLORS.primary;
-                    ctx.beginPath();
-                    ctx.roundRect(btn.x - 25, btn.y - 20, 50, 40, 8);
-                    ctx.fill();
-                }
-                ctx.fillStyle = '#FFF';
-                ctx.font = '20px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(btn.label, btn.x, btn.y + 6);
-                ctx.fillStyle = '#FFD700';
-                ctx.font = 'bold 12px Arial';
-                ctx.fillText(`×${btn.count}`, btn.x + 15, btn.y - 8);
-                if (status && status.timer > 0) {
-                    ctx.fillStyle = '#4CAF50';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(Math.ceil(status.timer / 60) + 's', btn.x, btn.y + 32);
-                }
-                if (status && status.count !== undefined && status.count > 0) {
-                    ctx.fillStyle = '#FF5722';
-                    ctx.font = 'bold 10px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.fillText(`🛡${status.count}`, btn.x, btn.y + 32);
-                }
-            });
 
             // Title
             ctx.fillStyle = COLORS.text;
@@ -3224,15 +1287,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                         ctx.fillRect(px, py, size - 2, size - 2);
                     }
                 }
-            }
-
-            // Path highlight for map_fragment
-            if (this.pathHighlight.length > 0) {
-                this.pathHighlight.forEach((cell, i) => {
-                    const alpha = 1 - i * 0.2;
-                    ctx.fillStyle = `rgba(0, 255, 0, ${alpha * 0.4})`;
-                    ctx.fillRect(offsetX + cell.x * size + 2, offsetY + cell.y * size + 2, size - 6, size - 6);
-                });
             }
 
             // Exit marker
@@ -3449,15 +1503,10 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.ctx = this.canvas.getContext('2d');
             this.audio = new AudioManager();
             this.saveManager = new SaveManager();
-            this.starManager = new StarManager();
-            this.achievementManager = new AchievementManager(this.starManager);
-            this.challengeManager = new ChallengeManager(this.starManager, this.audio);
-            this.starManager.setChallengeManager(this.challengeManager);
             this.currentScreen = 'home';
             this.currentGame = null;
             this.victoryModal = null;
             this.homeScreen = null;
-            this.itemShop = null;
 
             this.init();
         }
@@ -3477,59 +1526,17 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
             this.currentScreen = 'home';
             this.currentGame = null;
             this.victoryModal = null;
-            this.itemShop = null;
-            this.achievementPanel = null;
             this.homeScreen = new HomeScreen(
                 this.canvas,
                 this.audio,
                 this.saveManager,
-                this.starManager,
-                (gameId) => this.startGame(gameId),
-                () => this.openShop(),
-                this.achievementManager,
-                () => this.showAchievements(),
-                () => this.showChallenges(),
-                () => this.showItemBook(),
-                () => this.startTimedMode()
+                (gameId) => this.startGame(gameId)
             );
-        }
-
-        showAchievements() {
-            this.currentScreen = 'achievements';
-            this.homeScreen = null;
-            this.itemShop = null;
-            this.achievementPanel = new AchievementPanel(this.ctx, this.achievementManager, () => this.showHome());
-        }
-
-        showChallenges() {
-            this.currentScreen = 'challenges';
-            this.homeScreen = null;
-            this.itemShop = null;
-            this.achievementPanel = null;
-            this.itemBookPanel = null;
-            this.challengePanel = new ChallengePanel(this.ctx, this.challengeManager, () => this.showHome());
-        }
-
-        showItemBook() {
-            this.currentScreen = 'itembook';
-            this.homeScreen = null;
-            this.itemShop = null;
-            this.achievementPanel = null;
-            this.challengePanel = null;
-            this.itemBookPanel = new ItemBookPanel(this.ctx, this.starManager, () => this.showHome());
-        }
-
-        openShop() {
-            this.currentScreen = 'shop';
-            this.homeScreen = null;
-            this.achievementPanel = null;
-            this.itemShop = new ItemShop(this.canvas, this.ctx, this.audio, this.starManager, this.achievementManager, () => this.showHome());
         }
 
         startGame(gameId) {
             this.currentScreen = 'game';
             this.currentGame = null;
-            this.itemShop = null;
 
             switch(gameId) {
                 case 'shape':
@@ -3537,7 +1544,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                         this.canvas,
                         this.audio,
                         this.saveManager,
-                        this.starManager,
                         () => this.showHome(),
                         () => this.showVictory()
                     );
@@ -3547,7 +1553,6 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                         this.canvas,
                         this.audio,
                         this.saveManager,
-                        this.starManager,
                         () => this.showHome(),
                         () => this.showVictory()
                     );
@@ -3557,74 +1562,15 @@ constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, a
                         this.canvas,
                         this.audio,
                         this.saveManager,
-                        this.starManager,
                         () => this.showHome(),
                         () => this.showVictory()
                     );
                     this.currentGame.enableKeyControls();
                     break;
-                case 'timed':
-                    // Start random game in timed mode
-                    const games = ['shape', 'color', 'maze'];
-                    const randGame = games[Math.floor(Math.random() * games.length)];
-                    this.startTimedMode(randGame);
-                    break;
             }
-        }
-        startTimedMode(gameId) {
-            if (!gameId) {
-                const games = ['shape', 'color', 'maze'];
-                gameId = games[Math.floor(Math.random() * games.length)];
-            }
-            // TimedChallengeGame wraps a random game with 60s timer
-            const games = { shape: ShapeMatchGame, color: ColorSortGame, maze: MazeGame };
-            const GameClass = games[gameId];
-            const self = this;
-            this.currentGame = new GameClass(
-                this.canvas,
-                this.audio,
-                this.saveManager,
-                this.starManager,
-                () => {
-                    if (self.currentGame.timedInterval) clearInterval(self.currentGame.timedInterval);
-                    self.showVictory();
-                },
-                () => {
-                    if (self.currentGame.timedInterval) clearInterval(self.currentGame.timedInterval);
-                    self.showVictory();
-                }
-            );
-            this.currentGame.isTimedMode = true;
-            this.currentGame.timeLeft = 60;
-            this.currentGame.timedInterval = setInterval(() => {
-                if (self.currentGame && self.currentGame.timeLeft > 0) {
-                    self.currentGame.timeLeft--;
-                    if (self.currentGame.timeLeft <= 0) {
-                        clearInterval(self.currentGame.timedInterval);
-                        self.showVictory();
-                    }
-                }
-            }, 1000);
         }
 
-showVictory() {
-            // Award star on first completion, track for achievements
-            const gameId = this.currentGame && this.currentGame.constructor.name === 'ShapeMatchGame' ? 'shape' :
-                           this.currentGame && this.currentGame.constructor.name === 'ColorSortGame' ? 'color' : 'maze';
-            const isFirst = !this.saveManager.isCompleted(gameId);
-            const doubleMult = (this.currentGame && this.currentGame.doublePoints) ? 2 : 1;
-            if (isFirst) {
-                this.starManager.addStars(1 * doubleMult);
-                this.starManager.addTotalStarsEarned(1 * doubleMult);
-            }
-            this.starManager.incrementGameComplete(gameId);
-            this.achievementManager.checkAndAward();
-            // Check challenges
-            if (this.challengeManager) {
-                const elapsed = this.currentGame ? (this.currentGame.gameTime || 0) : 0;
-                this.challengeManager.checkChallenge(gameId + '_speed', gameId, elapsed);
-                this.challengeManager.checkItemChallenge('collector_10');
-            }
+        showVictory() {
             this.victoryModal = new VictoryModal(
                 this.ctx,
                 () => this.replayGame(),
@@ -3644,10 +1590,6 @@ showVictory() {
             const x = (e.clientX - rect.left) * (800 / rect.width);
             const y = (e.clientY - rect.top) * (600 / rect.height);
 
-            if (this.itemShop) {
-                return;
-            }
-
             if (this.victoryModal) {
                 const action = this.victoryModal.handleClick(x, y);
                 if (action === 'replay') {
@@ -3657,22 +1599,6 @@ showVictory() {
                     this.audio.playSound('select');
                     this.showHome();
                 }
-                return;
-            }
-
-            if (this.achievementPanel) {
-                this.achievementPanel.handleClick(x, y);
-                return;
-            }
-
-            if (this.itemBookPanel) {
-                this.itemBookPanel.handleClick(x, y);
-                return;
-            }
-
-            if (this.challengePanel) {
-                this.challengePanel.handleClick(x, y);
-                return;
             }
         }
 
@@ -3687,21 +1613,6 @@ showVictory() {
             if (this.victoryModal) {
                 this.victoryModal.update();
             }
-            if (this.itemShop) {
-                this.itemShop.update();
-            }
-            if (this.achievementPanel) {
-                // no update needed
-            }
-            if (this.challengePanel) {
-                // no update needed
-            }
-            if (this.itemBookPanel) {
-                // no update needed
-            }
-            if (this.challengeManager) {
-                this.challengeManager.update();
-            }
 
             // Draw
             this.ctx.clearRect(0, 0, 800, 600);
@@ -3714,56 +1625,6 @@ showVictory() {
             }
             if (this.victoryModal) {
                 this.victoryModal.draw();
-            }
-            if (this.itemShop) {
-                this.itemShop.draw();
-            }
-            if (this.achievementPanel) {
-                this.achievementPanel.draw();
-            }
-            if (this.challengePanel) {
-                this.challengePanel.draw();
-            }
-            if (this.itemBookPanel) {
-                this.itemBookPanel.draw();
-            }
-            // Draw challenge reward popup
-            if (this.challengeManager && this.challengeManager.rewardPopup && this.challengeManager.rewardPopup.timer > 0) {
-                const popup = this.challengeManager.rewardPopup;
-                const ctx = this.ctx;
-                ctx.save();
-                ctx.globalAlpha = popup.timer / 120;
-                ctx.fillStyle = '#FFD700';
-                ctx.beginPath();
-                ctx.roundRect(200, 250, 400, 80, 16);
-                ctx.fill();
-                ctx.strokeStyle = '#FF8F00';
-                ctx.lineWidth = 3;
-                ctx.stroke();
-                ctx.fillStyle = '#333';
-                ctx.font = 'bold 22px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(popup.text, 400, 295);
-                ctx.restore();
-            }
-            // Draw combo popup
-            if (this.comboPopup && this.comboPopup.timer > 0) {
-                this.comboPopup.timer--;
-                const ctx = this.ctx;
-                ctx.save();
-                ctx.globalAlpha = this.comboPopup.timer / 120;
-                ctx.fillStyle = '#9C27B0';
-                ctx.beginPath();
-                ctx.roundRect(200, 150, 400, 60, 12);
-                ctx.fill();
-                ctx.strokeStyle = '#E1BEE7';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = '#FFF';
-                ctx.font = 'bold 20px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText(this.comboPopup.text, 400, 185);
-                ctx.restore();
             }
 
             requestAnimationFrame(() => this.gameLoop());
