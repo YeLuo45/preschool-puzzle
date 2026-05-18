@@ -679,8 +679,21 @@
             this.upgradeResult = null;
             this.upgradeTimer = 0;
             this.currentTab = 'items'; // 'items' or 'fusion'
+            this.dailyDeals = this.generateDailyDeals();
+            this.dealTimer = this.getTimeUntilMidnight();
             this.initButtons();
             canvas.addEventListener('click', e => this.handleClick(e));
+        }
+        generateDailyDeals() {
+            const allItems = ITEM_DEFS.filter(i => !i.holiday && !i.id.includes('_plus'));
+            const shuffled = allItems.sort(() => Math.random() - 0.5);
+            return shuffled.slice(0, 3).map(item => ({ ...item, label: item.name, discount: 0.7, originalCost: item.cost }));
+        }
+        getTimeUntilMidnight() {
+            const now = new Date();
+            const midnight = new Date(now);
+            midnight.setHours(24, 0, 0, 0);
+            return Math.floor((midnight - now) / 1000);
         }
         initButtons() {
             const items = itemRegistry.list();
@@ -809,6 +822,13 @@
             if (this.resultTimer > 0) this.resultTimer--;
             if (this.gachaTimer > 0) this.gachaTimer--;
             if (this.upgradeTimer > 0) this.upgradeTimer--;
+            if (this.dealTimer > 0) {
+                this.dealTimer--;
+                if (this.dealTimer <= 0) {
+                    this.dailyDeals = this.generateDailyDeals();
+                    this.dealTimer = 86400;
+                }
+            }
         }
         draw() {
             const ctx = this.ctx;
@@ -825,6 +845,43 @@
             const stars = this.starManager.getStars();
             ctx.font = '22px Arial';
             ctx.fillText(`★ ${stars}`, 400, 95);
+            // Daily deals
+            const hours = Math.floor(this.dealTimer / 3600);
+            const mins = Math.floor((this.dealTimer % 3600) / 60);
+            ctx.fillStyle = '#9C27B0';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText(`🎁 今日特惠 (${hours}h${mins}m)`, 620, 60);
+            this.dailyDeals.forEach((deal, i) => {
+                const dealX = 620;
+                const dealY = 80 + i * 55;
+                ctx.fillStyle = '#F3E5F5';
+                ctx.beginPath();
+                ctx.roundRect(dealX - 70, dealY - 20, 140, 50, 8);
+                ctx.fill();
+                ctx.strokeStyle = '#9C27B0';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = '#FFF';
+                ctx.beginPath();
+                ctx.arc(dealX + 55, dealY - 10, 14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#9C27B0';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('7折', dealX + 55, dealY - 6);
+                ctx.fillStyle = '#333';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(deal.label, dealX - 60, dealY - 5);
+                const discountedCost = Math.floor(deal.originalCost * deal.discount);
+                ctx.fillStyle = '#F44336';
+                ctx.font = 'bold 12px Arial';
+                ctx.fillText(`~~${deal.originalCost}~~`, dealX - 60, dealY + 12);
+                ctx.fillStyle = '#4CAF50';
+                ctx.fillText(`${discountedCost}★`, dealX - 60 + 45, dealY + 12);
+                // Store discounted cost for purchase
+                deal._buyCost = discountedCost;
+            });
             // Tab buttons
             ctx.fillStyle = this.currentTab === 'items' ? '#4CAF50' : '#CCC';
             ctx.beginPath();
