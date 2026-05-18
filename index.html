@@ -1330,7 +1330,8 @@
             this.games = [
                 { id: 'shape', name: '形状匹配', icon: 'shape' },
                 { id: 'color', name: '颜色分类', icon: 'color' },
-                { id: 'maze', name: '简单迷宫', icon: 'maze' }
+                { id: 'maze', name: '简单迷宫', icon: 'maze' },
+                { id: 'timed', name: '限时挑战', icon: '⏱️', timed: true }
             ];
             this.buttons = [];
             this.hoveredIndex = -1;
@@ -3438,7 +3439,44 @@
                     );
                     this.currentGame.enableKeyControls();
                     break;
+                case 'timed':
+                    // Start random game in timed mode
+                    const games = ['shape', 'color', 'maze'];
+                    const randGame = games[Math.floor(Math.random() * games.length)];
+                    this.startTimedMode(randGame);
+                    break;
             }
+        }
+        startTimedMode(gameId) {
+            // TimedChallengeGame wraps a random game with 60s timer
+            const games = { shape: ShapeMatchGame, color: ColorSortGame, maze: MazeGame };
+            const GameClass = games[gameId];
+            const self = this;
+            this.currentGame = new GameClass(
+                this.canvas,
+                this.audio,
+                this.saveManager,
+                this.starManager,
+                () => {
+                    if (self.currentGame.timedInterval) clearInterval(self.currentGame.timedInterval);
+                    self.showVictory();
+                },
+                () => {
+                    if (self.currentGame.timedInterval) clearInterval(self.currentGame.timedInterval);
+                    self.showVictory();
+                }
+            );
+            this.currentGame.isTimedMode = true;
+            this.currentGame.timeLeft = 60;
+            this.currentGame.timedInterval = setInterval(() => {
+                if (self.currentGame && self.currentGame.timeLeft > 0) {
+                    self.currentGame.timeLeft--;
+                    if (self.currentGame.timeLeft <= 0) {
+                        clearInterval(self.currentGame.timedInterval);
+                        self.showVictory();
+                    }
+                }
+            }, 1000);
         }
 
 showVictory() {
