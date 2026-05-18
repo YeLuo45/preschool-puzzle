@@ -692,6 +692,78 @@
         }
     }
 
+    // ==================== Item Book Panel ====================
+    class ItemBookPanel {
+        constructor(ctx, starManager, onClose) {
+            this.ctx = ctx;
+            this.starManager = starManager;
+            this.onClose = onClose;
+        }
+        handleClick(x, y) {
+            if (y >= 530 && y <= 570 && x >= 350 && x <= 450) {
+                this.onClose();
+            }
+        }
+        draw() {
+            const ctx = this.ctx;
+            ctx.fillStyle = '#FFF8E7';
+            ctx.fillRect(0, 0, 800, 600);
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('📖 道具图鉴', 400, 50);
+            // Count
+            const inv = this.starManager.getInventory();
+            const owned = Object.keys(inv).filter(k => inv[k] > 0).length;
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#888';
+            ctx.fillText(`已收集: ${owned}/${ITEM_DEFS.length}`, 400, 80);
+            // Draw items in grid
+            const cols = 4;
+            const itemW = 160;
+            const itemH = 90;
+            const startX = 80;
+            const startY = 110;
+            const gap = 15;
+            ITEM_DEFS.forEach((item, i) => {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const x = startX + col * (itemW + gap);
+                const y = startY + row * (itemH + gap);
+                const hasItem = inv[item.id] > 0;
+                ctx.fillStyle = hasItem ? '#E8F5E9' : '#F5F5F5';
+                ctx.beginPath();
+                ctx.roundRect(x, y, itemW, itemH, 10);
+                ctx.fill();
+                ctx.strokeStyle = hasItem ? '#4CAF50' : '#DDD';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.font = '32px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(hasItem ? '✅' : '❓', x + 10, y + 40);
+                ctx.fillStyle = hasItem ? '#333' : '#999';
+                ctx.font = 'bold 14px Arial';
+                ctx.fillText(hasItem ? item.name : '???', x + 50, y + 30);
+                ctx.font = '12px Arial';
+                ctx.fillStyle = '#888';
+                ctx.fillText(hasItem ? item.desc : '未获得', x + 50, y + 50);
+                if (hasItem) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fillText(`x${inv[item.id]}`, x + 50, y + 70);
+                }
+            });
+            // Close button
+            ctx.fillStyle = '#666';
+            ctx.beginPath();
+            ctx.roundRect(350, 540, 100, 36, 8);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('关闭', 400, 565);
+        }
+    }
+
     // ==================== Achievement Panel ====================
     class AchievementPanel {
         constructor(ctx, achievementManager, onClose) {
@@ -1316,7 +1388,7 @@
 
     // ==================== Home Screen ====================
     class HomeScreen {
-        constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, achievementManager, onOpenAchievements) {
+constructor(canvas, audio, saveManager, starManager, onSelectGame, onOpenShop, achievementManager, onOpenAchievements, onOpenChallenges, onOpenItemBook) {
             this.canvas = canvas;
             this.ctx = canvas.getContext('2d');
             this.audio = audio;
@@ -1326,6 +1398,8 @@
             this.onOpenShop = onOpenShop;
             this.achievementManager = achievementManager;
             this.onOpenAchievements = onOpenAchievements;
+            this.onOpenChallenges = onOpenChallenges;
+            this.onOpenItemBook = onOpenItemBook;
             this.audioInitialized = false;
             this.games = [
                 { id: 'shape', name: '形状匹配', icon: 'shape' },
@@ -1396,6 +1470,12 @@
             if (pos.x >= 630 && pos.x <= 710 && pos.y >= 20 && pos.y <= 64) {
                 this.audio.playSound('select');
                 if (this.onOpenChallenges) this.onOpenChallenges();
+                return;
+            }
+            // Item Book button (to the left of achievements)
+            if (pos.x >= 460 && pos.x <= 530 && pos.y >= 20 && pos.y <= 64) {
+                this.audio.playSound('select');
+                if (this.onOpenItemBook) this.onOpenItemBook();
                 return;
             }
             // Shop button (top right)
@@ -1503,6 +1583,18 @@
             ctx.fillText('🏆', 560, 36);
             ctx.font = 'bold 12px Arial';
             ctx.fillText(`${achUnlocked}/${achTotal}`, 595, 36);
+
+            // Item Book button (between achievements and challenges)
+            ctx.fillStyle = '#9C27B0';
+            ctx.beginPath();
+            ctx.roundRect(610, 20, 70, 44, 10);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('📖', 630, 28);
+            ctx.font = 'bold 11px Arial';
+            ctx.fillText('图鉴', 645, 40);
 
             // Challenge button (center-right)
             ctx.fillStyle = '#FF5722';
@@ -3376,7 +3468,8 @@
                 () => this.openShop(),
                 this.achievementManager,
                 () => this.showAchievements(),
-                () => this.showChallenges()
+                () => this.showChallenges(),
+                () => this.showItemBook()
             );
         }
 
@@ -3392,7 +3485,17 @@
             this.homeScreen = null;
             this.itemShop = null;
             this.achievementPanel = null;
+            this.itemBookPanel = null;
             this.challengePanel = new ChallengePanel(this.ctx, this.challengeManager, () => this.showHome());
+        }
+
+        showItemBook() {
+            this.currentScreen = 'itembook';
+            this.homeScreen = null;
+            this.itemShop = null;
+            this.achievementPanel = null;
+            this.challengePanel = null;
+            this.itemBookPanel = new ItemBookPanel(this.ctx, this.starManager, () => this.showHome());
         }
 
         openShop() {
@@ -3537,6 +3640,11 @@ showVictory() {
                 return;
             }
 
+            if (this.itemBookPanel) {
+                this.itemBookPanel.handleClick(x, y);
+                return;
+            }
+
             if (this.challengePanel) {
                 this.challengePanel.handleClick(x, y);
                 return;
@@ -3563,6 +3671,9 @@ showVictory() {
             if (this.challengePanel) {
                 // no update needed
             }
+            if (this.itemBookPanel) {
+                // no update needed
+            }
             if (this.challengeManager) {
                 this.challengeManager.update();
             }
@@ -3587,6 +3698,9 @@ showVictory() {
             }
             if (this.challengePanel) {
                 this.challengePanel.draw();
+            }
+            if (this.itemBookPanel) {
+                this.itemBookPanel.draw();
             }
             // Draw challenge reward popup
             if (this.challengeManager && this.challengeManager.rewardPopup && this.challengeManager.rewardPopup.timer > 0) {
