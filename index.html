@@ -438,10 +438,21 @@
 
     // ==================== Challenge Manager ====================
     class ChallengeManager {
-        constructor(starManager) {
+        constructor(starManager, audio) {
             this.starManager = starManager;
+            this.audio = audio;
             this.key = 'puzzle_challenges';
             this.weekKey = 'puzzle_challenge_week';
+            this.rewardPopup = null;
+        }
+        showRewardPopup(ch) {
+            this.rewardPopup = { text: `🎉 挑战完成: ${ch.name} +${ch.reward}★`, timer: 120 };
+            if (this.audio) this.audio.playSound('success');
+        }
+        update() {
+            if (this.rewardPopup && this.rewardPopup.timer > 0) {
+                this.rewardPopup.timer--;
+            }
         }
         getCurrentWeek() {
             const now = new Date();
@@ -479,6 +490,7 @@
                 this.starManager.addStars(ch.reward);
                 this.starManager.addTotalStarsEarned(ch.reward);
                 localStorage.setItem(this.key + '_week_' + data.week, JSON.stringify(data));
+                this.showRewardPopup(ch);
             }
         }
         checkItemChallenge(id) {
@@ -490,6 +502,7 @@
                 this.starManager.addStars(ch.reward);
                 this.starManager.addTotalStarsEarned(ch.reward);
                 localStorage.setItem(this.key + '_week_' + data.week, JSON.stringify(data));
+                this.showRewardPopup(ch);
             }
         }
     }
@@ -2798,7 +2811,7 @@
             this.saveManager = new SaveManager();
             this.starManager = new StarManager();
             this.achievementManager = new AchievementManager(this.starManager);
-            this.challengeManager = new ChallengeManager(this.starManager);
+            this.challengeManager = new ChallengeManager(this.starManager, this.audio);
             this.starManager.setChallengeManager(this.challengeManager);
             this.currentScreen = 'home';
             this.currentGame = null;
@@ -2985,6 +2998,9 @@ showVictory() {
             if (this.challengePanel) {
                 // no update needed
             }
+            if (this.challengeManager) {
+                this.challengeManager.update();
+            }
 
             // Draw
             this.ctx.clearRect(0, 0, 800, 600);
@@ -3006,6 +3022,25 @@ showVictory() {
             }
             if (this.challengePanel) {
                 this.challengePanel.draw();
+            }
+            // Draw challenge reward popup
+            if (this.challengeManager && this.challengeManager.rewardPopup && this.challengeManager.rewardPopup.timer > 0) {
+                const popup = this.challengeManager.rewardPopup;
+                const ctx = this.ctx;
+                ctx.save();
+                ctx.globalAlpha = popup.timer / 120;
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.roundRect(200, 250, 400, 80, 16);
+                ctx.fill();
+                ctx.strokeStyle = '#FF8F00';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 22px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(popup.text, 400, 295);
+                ctx.restore();
             }
 
             requestAnimationFrame(() => this.gameLoop());
