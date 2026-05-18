@@ -218,6 +218,9 @@
         { id: 'time_bank', name: '时间银行', desc: '存储时间，困难时取出', cost: 200, game: 'all', effect: 'timebank' },
         { id: 'speed_gear', name: '加速齿轮', desc: '下一步速度翻倍', cost: 100, game: 'all', effect: 'speed' },
         { id: 'memory_crystal', name: '记忆水晶', desc: '显示最近操作记录', cost: 120, game: 'maze', effect: 'memory' },
+        { id: 'firework', name: '烟花', desc: '庆祝特效+10星', cost: 50, game: 'all', effect: 'firework', holiday: true },
+        { id: 'star_rain', name: '星落', desc: '星星雨特效', cost: 80, game: 'all', effect: 'starrain', holiday: true },
+        { id: 'rainbow_boost', name: '彩虹加速', desc: '彩虹路径加速', cost: 60, game: 'all', effect: 'rainbow', holiday: true },
     ];
 
     const itemRegistry = new ToolRegistry();
@@ -1472,6 +1475,9 @@
             this.revealTimer = 0;
             this.luckyCharmActive = false;
             this.timeBankStored = 0;
+            this.rainbowBoostActive = false;
+            this.fireworks = [];
+            this.starRainDrops = [];
             this.itemCombo = 0;
             this.lastItemUsed = null;
             // Item buttons
@@ -1586,6 +1592,15 @@
                 this.memoryCrystalActive = true;
                 if (this.itemStatus) this.itemStatus.memory_crystal = { active: true };
                 this.audio.playSound('select');
+            } else if (itemId === 'firework') {
+                this.triggerFirework();
+                this.starManager.addStars(10);
+            } else if (itemId === 'star_rain') {
+                this.triggerStarRain();
+            } else if (itemId === 'rainbow_boost') {
+                this.rainbowBoostActive = true;
+                if (this.itemStatus) this.itemStatus.rainbow_boost = { active: true };
+                this.audio.playSound('success');
             }
             // Item combo tracking
             if (this.lastItemUsed && this.lastItemUsed !== itemId) {
@@ -1606,6 +1621,35 @@
 
         showComboPopup() {
             this.comboPopup = { text: '🎯 道具大师! +5★', timer: 120 };
+            if (this.audio) this.audio.playSound('success');
+        }
+
+        triggerFirework() {
+            this.fireworks = [];
+            for (let i = 0; i < 20; i++) {
+                this.fireworks.push({
+                    x: 100 + Math.random() * 600,
+                    y: 100 + Math.random() * 200,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    color: ['#FF6B6B', '#4ECDC4', '#FFE66D', '#95E1D3', '#F38181'][Math.floor(Math.random() * 5)],
+                    life: 60 + Math.random() * 40
+                });
+            }
+            if (this.audio) this.audio.playSound('success');
+        }
+
+        triggerStarRain() {
+            this.starRainDrops = [];
+            for (let i = 0; i < 30; i++) {
+                this.starRainDrops.push({
+                    x: Math.random() * 800,
+                    y: -20 - Math.random() * 100,
+                    speed: 3 + Math.random() * 4,
+                    size: 4 + Math.random() * 6,
+                    twinkle: Math.random() * Math.PI * 2
+                });
+            }
             if (this.audio) this.audio.playSound('success');
         }
 
@@ -1877,17 +1921,63 @@
                 ctx.restore();
             }
 
-            // Progress
+// Progress
             ctx.fillStyle = COLORS.text;
             ctx.font = '20px Arial';
             ctx.fillText(`已完成: ${this.matchedShapes.length}/6`, 400, 560);
 
             this.particles.forEach(p => p.draw(ctx));
+
+            // Draw fireworks effect
+            if (this.fireworks && this.fireworks.length > 0) {
+                this.fireworks = this.fireworks.filter(f => f.life > 0);
+                this.fireworks.forEach(f => {
+                    ctx.beginPath();
+                    ctx.fillStyle = f.color;
+                    ctx.globalAlpha = f.life / 100;
+                    ctx.arc(f.x, f.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    f.x += f.vx;
+                    f.y += f.vy;
+                    f.vy += 0.2;
+                    f.life--;
+                });
+                ctx.globalAlpha = 1;
+            }
+
+            // Draw star rain effect
+            if (this.starRainDrops && this.starRainDrops.length > 0) {
+                this.starRainDrops = this.starRainDrops.filter(d => d.y < 620);
+                this.starRainDrops.forEach(d => {
+                    ctx.save();
+                    ctx.fillStyle = '#FFD700';
+                    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(d.twinkle);
+                    const starPath = `⭐`;
+                    ctx.font = `${d.size * 2}px Arial`;
+                    ctx.fillText(starPath, d.x, d.y);
+                    d.y += d.speed;
+                    d.twinkle += 0.1;
+                    ctx.restore();
+                });
+            }
         }
 
         drawBackButton() {
             const ctx = this.ctx;
             ctx.fillStyle = COLORS.primary;
+            ctx.beginPath();
+            ctx.arc(40, 40, 25, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('←', 40, 40);
+        }
+    }
+
+    // ==================== Color Sort Game ====================
+    class ColorSortGame {
             ctx.beginPath();
             ctx.arc(40, 40, 25, 0, Math.PI * 2);
             ctx.fill();
