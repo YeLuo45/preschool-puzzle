@@ -1456,6 +1456,8 @@
             this.revealTimer = 0;
             this.luckyCharmActive = false;
             this.timeBankStored = 0;
+            this.itemCombo = 0;
+            this.lastItemUsed = null;
             // Item buttons
             this.itemButtons = [];
             this.init();
@@ -1569,8 +1571,26 @@
                 if (this.itemStatus) this.itemStatus.memory_crystal = { active: true };
                 this.audio.playSound('select');
             }
+            // Item combo tracking
+            if (this.lastItemUsed && this.lastItemUsed !== itemId) {
+                this.itemCombo++;
+                if (this.itemCombo >= 3) {
+                    // Combo bonus!
+                    this.starManager.addStars(5);
+                    this.showComboPopup();
+                    this.itemCombo = 0;
+                }
+            } else if (this.lastItemUsed === itemId) {
+                this.itemCombo = 1;
+            }
+            this.lastItemUsed = itemId;
             this.setupItemButtons();
             return true;
+        }
+
+        showComboPopup() {
+            this.comboPopup = { text: '🎯 道具大师! +5★', timer: 120 };
+            if (this.audio) this.audio.playSound('success');
         }
 
         shuffle(arr) {
@@ -3209,6 +3229,25 @@ showVictory() {
                 ctx.font = 'bold 22px Arial';
                 ctx.textAlign = 'center';
                 ctx.fillText(popup.text, 400, 295);
+                ctx.restore();
+            }
+            // Draw combo popup
+            if (this.comboPopup && this.comboPopup.timer > 0) {
+                this.comboPopup.timer--;
+                const ctx = this.ctx;
+                ctx.save();
+                ctx.globalAlpha = this.comboPopup.timer / 120;
+                ctx.fillStyle = '#9C27B0';
+                ctx.beginPath();
+                ctx.roundRect(200, 150, 400, 60, 12);
+                ctx.fill();
+                ctx.strokeStyle = '#E1BEE7';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = '#FFF';
+                ctx.font = 'bold 20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(this.comboPopup.text, 400, 185);
                 ctx.restore();
             }
 
