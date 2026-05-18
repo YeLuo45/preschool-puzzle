@@ -267,7 +267,23 @@
             inv[itemId]--;
             if (inv[itemId] <= 0) delete inv[itemId];
             localStorage.setItem(this.invKey, JSON.stringify(inv));
+            // Track usage history
+            this.trackItemUsage(itemId);
             return true;
+        }
+        trackItemUsage(itemId) {
+            try {
+                const historyKey = 'preschool_puzzle_item_history';
+                let history = JSON.parse(localStorage.getItem(historyKey) || '[]');
+                history.unshift({ item: itemId, time: Date.now() });
+                if (history.length > 20) history = history.slice(0, 20);
+                localStorage.setItem(historyKey, JSON.stringify(history));
+            } catch {}
+        }
+        getItemHistory() {
+            try {
+                return JSON.parse(localStorage.getItem('preschool_puzzle_item_history') || '[]');
+            } catch { return []; }
         }
         hasItem(itemId) {
             const inv = this.getInventory();
