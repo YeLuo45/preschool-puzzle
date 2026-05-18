@@ -226,6 +226,10 @@
             this.invKey = 'preschool_puzzle_inventory';
             this.dailyKey = 'preschool_puzzle_last_login';
             this.streakKey = 'preschool_puzzle_login_streak';
+            this.challengeManager = null;
+        }
+        setChallengeManager(cm) {
+            this.challengeManager = cm;
         }
         getStars() {
             try { return parseInt(localStorage.getItem(this.key) || '0'); } catch { return 0; }
@@ -248,6 +252,9 @@
             const inv = this.getInventory();
             inv[itemId] = (inv[itemId] || 0) + 1;
             localStorage.setItem(this.invKey, JSON.stringify(inv));
+            if (this.challengeManager) {
+                this.challengeManager.checkItemChallenge('collector_10');
+            }
         }
         useItem(itemId) {
             const inv = this.getInventory();
@@ -2708,6 +2715,7 @@
             this.starManager = new StarManager();
             this.achievementManager = new AchievementManager(this.starManager);
             this.challengeManager = new ChallengeManager(this.starManager);
+            this.starManager.setChallengeManager(this.challengeManager);
             this.currentScreen = 'home';
             this.currentGame = null;
             this.victoryModal = null;
