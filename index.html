@@ -1492,6 +1492,15 @@
                     this.itemButtons.push({ ...item, count });
                 }
             });
+            // Item status tracking
+            this.itemStatus = {
+                shape_hint: { active: false, timer: 0 },
+                time_pause: { active: false },
+                time_slow: { active: false, timer: 0 },
+                double_points: { active: false, timer: 0 },
+                shield: { active: false, count: this.shieldActive || 0 },
+                reveal_answer: { active: false, timer: 0 }
+            };
         }
 
         useItem(itemId) {
@@ -1500,24 +1509,31 @@
             if (itemId === 'shape_hint') {
                 this.hintActive = true;
                 this.hintTimer = itemId.includes('_plus') ? 600 : 300;
+                if (this.itemStatus) this.itemStatus.shape_hint = { active: true, timer: this.hintTimer };
                 this.audio.playSound('select');
             } else if (itemId === 'time_pause') {
                 this.paused = !this.paused;
+                if (this.itemStatus) this.itemStatus.time_pause.active = this.paused;
                 this.audio.playSound('select');
             } else if (itemId === 'time_slow') {
                 this.timeSlow = true;
                 this.timeSlowTimer = itemId.includes('_plus') ? 960 : 600;
+                if (this.itemStatus) this.itemStatus.time_slow = { active: true, timer: this.timeSlowTimer };
                 this.audio.playSound('select');
             } else if (itemId === 'double_points') {
                 this.doublePoints = true;
+                this.doublePointsTimer = 600;
+                if (this.itemStatus) this.itemStatus.double_points = { active: true, timer: 600 };
                 this.setupItemButtons();
                 return true;
             } else if (itemId === 'shield') {
                 this.shieldActive = (this.shieldActive || 0) + (itemId.includes('_plus') ? 2 : 1);
+                if (this.itemStatus) this.itemStatus.shield = { active: this.shieldActive > 0, count: this.shieldActive };
                 this.audio.playSound('select');
             } else if (itemId === 'reveal_answer') {
                 this.revealActive = true;
                 this.revealTimer = itemId.includes('_plus') ? 9999 : 300;
+                if (this.itemStatus) this.itemStatus.reveal_answer = { active: true, timer: this.revealTimer };
                 this.audio.playSound('select');
             }
             this.setupItemButtons();
@@ -1624,15 +1640,24 @@
             if (this.hintActive) {
                 this.hintTimer--;
                 if (this.hintTimer <= 0) this.hintActive = false;
+                if (this.itemStatus) this.itemStatus.shape_hint.timer = this.hintTimer;
             }
             if (this.timeSlow && this.timeSlowTimer > 0) {
                 this.timeSlowTimer--;
                 if (this.timeSlowTimer <= 0) this.timeSlow = false;
+                if (this.itemStatus) this.itemStatus.time_slow.timer = this.timeSlowTimer;
+            }
+            if (this.doublePoints && this.doublePointsTimer > 0) {
+                this.doublePointsTimer--;
+                if (this.doublePointsTimer <= 0) this.doublePoints = false;
+                if (this.itemStatus) this.itemStatus.double_points.timer = this.doublePointsTimer;
             }
             if (this.revealActive) {
                 this.revealTimer--;
                 if (this.revealTimer <= 0) this.revealActive = false;
+                if (this.itemStatus) this.itemStatus.reveal_answer.timer = this.revealTimer;
             }
+            if (this.itemStatus) this.itemStatus.shield.count = this.shieldActive || 0;
             this.particles = this.particles.filter(p => {
                 p.update();
                 return p.life > 0;
