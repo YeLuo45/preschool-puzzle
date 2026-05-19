@@ -584,7 +584,10 @@
             this.uiExpanded = false;
             this.achievements = this._getDefaultAchievements();
             this.newAchievement = null;
-            this.newAchievementTimer = 0; // 0=fox, 1=rabbit, 2=cat
+            this.newAchievementTimer = 0;
+            this.dailyLogin = this._loadDailyLogin();
+            this.streak = this.dailyLogin.streak;
+            this.lastLoginDate = this.dailyLogin.lastDate; // 0=fox, 1=rabbit, 2=cat
             this.expressions = ['happy', 'sad', 'thinking', 'excited'];
             this.switchTimer = 0;
             this.switchScale = 1;
@@ -666,6 +669,47 @@
                 }
             }
         }
+        _checkDailyLogin() {
+            const today = new Date().toDateString();
+            if (this.lastLoginDate === today) return false;
+            // Check if yesterday
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            if (this.lastLoginDate === yesterday.toDateString()) {
+                this.streak++;
+            } else {
+                this.streak = 1;
+            }
+            this.lastLoginDate = today;
+            this.dailyLogin = { lastDate: today, streak: this.streak };
+            this._saveDailyLogin();
+            // Reward
+            const rewards = [
+                { day: 1, xp: 20, bonus: '小礼物' },
+                { day: 2, xp: 30, bonus: '双倍经验' },
+                { day: 3, xp: 40, bonus: '神秘道具' },
+                { day: 4, xp: 50, bonus: '角色碎片' },
+                { day: 5, xp: 60, bonus: '稀有角色' },
+                { day: 6, xp: 70, bonus: '三倍经验' },
+                { day: 7, xp: 100, bonus: '传说角色' }
+            ];
+            const reward = rewards[Math.min(this.streak - 1, 6)];
+            this.addXP(reward.xp);
+            this.show(`连续登录${this.streak}天！获得${reward.xp}XP和${reward.bonus}！`, 'excited', 250);
+            return true;
+        }
+        _loadDailyLogin() {
+            try {
+                const saved = localStorage.getItem('preschool-helper-daily');
+                if (saved) return JSON.parse(saved);
+            } catch (e) {}
+            return { lastDate: null, streak: 0 };
+        }
+        _saveDailyLogin() {
+            try {
+                localStorage.setItem('preschool-helper-daily', JSON.stringify(this.dailyLogin));
+            } catch (e) {}
+        }
         _loadProgress() {
             try {
                 const saved = localStorage.getItem('preschool-helper-progress');
@@ -695,6 +739,11 @@
             } catch (e) {}
         }
         show(message, emotion = 'happy', duration = 180) {
+            // Check daily login on first message
+            if (this.messages.length === 0 && !this._checkedDailyToday) {
+                this._checkedDailyToday = true;
+                this._checkDailyLogin();
+            }
             this.messages.push({ message, emotion, duration, timer: duration });
             if (!this.currentMessage) this._nextMessage();
             this._playEmotionSound(emotion);
