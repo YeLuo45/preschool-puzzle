@@ -587,7 +587,9 @@
             this.newAchievementTimer = 0;
             this.dailyLogin = this._loadDailyLogin();
             this.streak = this.dailyLogin.streak;
-            this.lastLoginDate = this.dailyLogin.lastDate; // 0=fox, 1=rabbit, 2=cat
+            this.lastLoginDate = this.dailyLogin.lastDate;
+            this.weeklyChallenge = this._loadWeeklyChallenge();
+            this.seasonPass = this._loadSeasonPass(); // 0=fox, 1=rabbit, 2=cat
             this.expressions = ['happy', 'sad', 'thinking', 'excited'];
             this.switchTimer = 0;
             this.switchScale = 1;
@@ -668,6 +670,31 @@
                     break;
                 }
             }
+            // Update weekly challenges
+            this._updateWeeklyChallenges();
+        }
+        _updateWeeklyChallenges() {
+            for (const chal of this.weeklyChallenge.challenges) {
+                if (this.weeklyChallenge.completed.includes(chal.id)) continue;
+                if (chal.id === 'win_5') {
+                    chal.progress = Math.min(chal.target, this.totalSuccesses);
+                    if (chal.progress >= chal.target && !this.weeklyChallenge.completed.includes(chal.id)) {
+                        this.weeklyChallenge.completed.push(chal.id);
+                        this.addXP(chal.xp);
+                        this.show(`周挑战完成：${chal.name}！获得${chal.xp}XP！`, 'excited', 250);
+                        this._saveWeeklyChallenge();
+                    }
+                }
+                if (chal.id === 'play_10') {
+                    chal.progress = Math.min(chal.target, this.totalGamesPlayed);
+                    if (chal.progress >= chal.target && !this.weeklyChallenge.completed.includes(chal.id)) {
+                        this.weeklyChallenge.completed.push(chal.id);
+                        this.addXP(chal.xp);
+                        this.show(`周挑战完成：${chal.name}！获得${chal.xp}XP！`, 'excited', 250);
+                        this._saveWeeklyChallenge();
+                    }
+                }
+            }
         }
         _checkDailyLogin() {
             const today = new Date().toDateString();
@@ -697,6 +724,81 @@
             this.addXP(reward.xp);
             this.show(`连续登录${this.streak}天！获得${reward.xp}XP和${reward.bonus}！`, 'excited', 250);
             return true;
+        }
+        _loadWeeklyChallenge() {
+            try {
+                const saved = localStorage.getItem('preschool-helper-weekly');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    const weekStart = this._getWeekStart();
+                    if (data.weekStart !== weekStart) {
+                        // New week, reset
+                        return { weekStart, challenges: this._generateWeeklyChallenges(), completed: [] };
+                    }
+                    return data;
+                }
+            } catch (e) {}
+            return { weekStart: this._getWeekStart(), challenges: this._generateWeeklyChallenges(), completed: [] };
+        }
+        _getWeekStart() {
+            const now = new Date();
+            const day = now.getDay();
+            const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+            return new Date(now.setDate(diff)).toDateString();
+        }
+        _generateWeeklyChallenges() {
+            const challengeTypes = [
+                { id: 'win_5', name: '胜利5次', desc: '在任意游戏中胜利5次', target: 5, xp: 80 },
+                { id: 'play_10', name: '完成10局', desc: '累计完成10局游戏', target: 10, xp: 60 },
+                { id: 'perfect_3', name: '完美通关3次', desc: '连续成功3次不失败', target: 3, xp: 100 },
+                { id: 'all_games', name: '三种游戏', desc: '每种游戏都玩过至少1次', target: 3, xp: 50 }
+            ];
+            return challengeTypes;
+        }
+        _loadSeasonPass() {
+            try {
+                const saved = localStorage.getItem('preschool-helper-season');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    const seasonEnd = new Date(data.seasonStart);
+                    seasonEnd.setDate(seasonEnd.getDate() + 30);
+                    if (new Date() > seasonEnd) {
+                        // New season
+                        return this._newSeason();
+                    }
+                    return data;
+                }
+            } catch (e) {}
+            return this._newSeason();
+        }
+        _newSeason() {
+            const start = new Date();
+            const end = new Date(start);
+            end.setDate(end.getDate() + 30);
+            return {
+                seasonStart: start.toDateString(),
+                seasonEnd: end.toDateString(),
+                level: 1,
+                xp: 0,
+                xpToNext: 200,
+                rewards: [
+                    { level: 1, item: '小狐狸皮肤', claimed: true },
+                    { level: 5, item: '小兔子皮肤', claimed: false },
+                    { level: 10, item: '小熊猫皮肤', claimed: false },
+                    { level: 15, item: '小狮子皮肤', claimed: false },
+                    { level: 20, item: '传说龙皮肤', claimed: false }
+                ]
+            };
+        }
+        _saveSeasonPass() {
+            try {
+                localStorage.setItem('preschool-helper-season', JSON.stringify(this.seasonPass));
+            } catch (e) {}
+        }
+        _saveWeeklyChallenge() {
+            try {
+                localStorage.setItem('preschool-helper-weekly', JSON.stringify(this.weeklyChallenge));
+            } catch (e) {}
         }
         _loadDailyLogin() {
             try {
