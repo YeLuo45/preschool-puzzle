@@ -622,13 +622,19 @@
             const charY = this.y + bounceY;
             ctx.save();
             // Draw character (fox)
-            this._drawFox(ctx, this.x, charY);
+            this._drawCharacter(ctx, this.x, charY);
             // Draw speech bubble
             if (this.currentMessage && this.opacity > 0) {
                 ctx.globalAlpha = this.opacity;
                 this._drawSpeechBubble(ctx, this.x, charY - 80);
             }
             ctx.restore();
+        }
+        _drawCharacter(ctx, x, y) {
+            const t = this.characterType;
+            if (t === 0) this._drawFox(ctx, x, y);
+            else if (t === 1) this._drawRabbit(ctx, x, y);
+            else this._drawCat(ctx, x, y);
         }
         _drawFox(ctx, x, y) {
             // Body
@@ -663,46 +669,194 @@
             ctx.lineTo(x + 15, y - 48);
             ctx.lineTo(x + 20, y - 37);
             ctx.fill();
-            // Face - white patch
+            // Face
             ctx.fillStyle = '#FFF5EE';
             ctx.beginPath();
             ctx.ellipse(x, y - 5, 18, 16, 0, 0, Math.PI * 2);
             ctx.fill();
-            // Eyes
-            if (this.isBlinking) {
-                ctx.strokeStyle = '#3D2914';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(x - 18, y - 18);
-                ctx.lineTo(x - 8, y - 18);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(x + 8, y - 18);
-                ctx.lineTo(x + 18, y - 18);
-                ctx.stroke();
-            } else {
-                ctx.fillStyle = '#3D2914';
-                ctx.beginPath();
-                ctx.ellipse(x - 13, y - 18, 4, 5, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.ellipse(x + 13, y - 18, 4, 5, 0, 0, Math.PI * 2);
-                ctx.fill();
-                // Eye shine
-                ctx.fillStyle = '#FFF';
-                ctx.beginPath();
-                ctx.arc(x - 11, y - 20, 1.5, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(x + 15, y - 20, 1.5, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            // Nose
+            this._drawEyes(ctx, x - 13, y - 18, x + 13, y - 18);
             ctx.fillStyle = '#3D2914';
             ctx.beginPath();
             ctx.ellipse(x, y - 5, 5, 4, 0, 0, Math.PI * 2);
             ctx.fill();
-            // Mouth - expression based
+            this._drawMouth(ctx, x, y);
+            this._drawBlush(ctx, x - 22, y - 10, x + 22, y - 10);
+            const waggle = Math.sin(this.bouncePhase * 2) * 0.2;
+            ctx.fillStyle = '#FF8C42';
+            ctx.beginPath();
+            ctx.ellipse(x + 30, y + 25, 18, 10, 0.3 * Math.PI + waggle, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x + 38, y + 28, 8, 5, 0.3 * Math.PI + waggle, 0, Math.PI * 2);
+            ctx.fill();
+            const stepOffset = Math.sin(this.bouncePhase * 3) * 2;
+            ctx.fillStyle = '#FF8C42';
+            ctx.beginPath();
+            ctx.ellipse(x - 15, y + 38 + stepOffset, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 15, y + 38 - stepOffset, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawRabbit(ctx, x, y) {
+            ctx.fillStyle = '#F5F5F5';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 20, 26, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x, y - 12, 30, 28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Long ears
+            ctx.fillStyle = '#F5F5F5';
+            ctx.beginPath();
+            ctx.ellipse(x - 12, y - 55, 8, 25, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 12, y - 55, 8, 25, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFB6C1';
+            ctx.beginPath();
+            ctx.ellipse(x - 12, y - 55, 4, 18, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 12, y - 55, 4, 18, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 5, 16, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawEyes(ctx, x - 10, y - 15, x + 10, y - 15);
+            ctx.fillStyle = '#FFB6C1';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 3, 4, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawMouth(ctx, x, y + 2);
+            this._drawBlush(ctx, x - 18, y - 8, x + 18, y - 8);
+            const hop = Math.abs(Math.sin(this.bouncePhase * 2)) * 5;
+            ctx.fillStyle = '#F5F5F5';
+            ctx.beginPath();
+            ctx.ellipse(x - 12, y + 38 - hop, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 12, y + 38 - hop, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawCat(ctx, x, y) {
+            ctx.fillStyle = '#808080';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 20, 26, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x, y - 12, 28, 26, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Pointy ears
+            ctx.fillStyle = '#808080';
+            ctx.beginPath();
+            ctx.moveTo(x - 25, y - 25);
+            ctx.lineTo(x - 18, y - 50);
+            ctx.lineTo(x - 8, y - 28);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 25, y - 25);
+            ctx.lineTo(x + 18, y - 50);
+            ctx.lineTo(x + 8, y - 28);
+            ctx.fill();
+            ctx.fillStyle = '#FFB6C1';
+            ctx.beginPath();
+            ctx.moveTo(x - 22, y - 27);
+            ctx.lineTo(x - 18, y - 42);
+            ctx.lineTo(x - 12, y - 28);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 22, y - 27);
+            ctx.lineTo(x + 18, y - 42);
+            ctx.lineTo(x + 12, y - 28);
+            ctx.fill();
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 5, 15, 13, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Cat eyes (slits)
+            ctx.fillStyle = '#3D2914';
+            if (this.isBlinking) {
+                ctx.strokeStyle = '#3D2914';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x - 15, y - 15);
+                ctx.lineTo(x - 5, y - 15);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x + 5, y - 15);
+                ctx.lineTo(x + 15, y - 15);
+                ctx.stroke();
+            } else {
+                ctx.beginPath();
+                ctx.ellipse(x - 10, y - 15, 3, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(x + 10, y - 15, 3, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#90EE90';
+                ctx.beginPath();
+                ctx.ellipse(x - 10, y - 15, 1.5, 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(x + 10, y - 15, 1.5, 4, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.fillStyle = '#3D2914';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 2, 4, 3, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawMouth(ctx, x, y + 3);
+            this._drawBlush(ctx, x - 20, y - 8, x + 20, y - 8);
+            const tailWag = Math.sin(this.bouncePhase * 1.5) * 0.3;
+            ctx.strokeStyle = '#808080';
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(x + 25, y + 15);
+            ctx.quadraticCurveTo(x + 45 + Math.sin(this.bouncePhase) * 10, y, x + 40, y - 20);
+            ctx.stroke();
+            ctx.fillStyle = '#808080';
+            ctx.beginPath();
+            ctx.ellipse(x - 10, y + 38, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 10, y + 38, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawEyes(ctx, lx, ly, rx, ry) {
+            if (this.isBlinking) {
+                ctx.strokeStyle = '#3D2914';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(lx - 5, ly);
+                ctx.lineTo(lx + 5, ly);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(rx - 5, ry);
+                ctx.lineTo(rx + 5, ry);
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = '#3D2914';
+                ctx.beginPath();
+                ctx.ellipse(lx, ly, 4, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(rx, ry, 4, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFF';
+                ctx.beginPath();
+                ctx.arc(lx - 1, ly - 2, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(rx + 1, ry - 2, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        _drawMouth(ctx, x, y) {
             ctx.strokeStyle = '#3D2914';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -715,32 +869,14 @@
                 ctx.lineTo(x + 6, y + 2);
             }
             ctx.stroke();
-            // Cheeks (blush)
+        }
+        _drawBlush(ctx, lx, ly, rx, ry) {
             ctx.fillStyle = 'rgba(255, 150, 150, 0.3)';
             ctx.beginPath();
-            ctx.ellipse(x - 22, y - 10, 6, 4, 0, 0, Math.PI * 2);
+            ctx.ellipse(lx, ly, 6, 4, 0, 0, Math.PI * 2);
             ctx.fill();
             ctx.beginPath();
-            ctx.ellipse(x + 22, y - 10, 6, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
-            // Tail - wagging
-            const waggle = Math.sin(this.bouncePhase * 2) * 0.2;
-            ctx.fillStyle = '#FF8C42';
-            ctx.beginPath();
-            ctx.ellipse(x + 30, y + 25, 18, 10, 0.3 * Math.PI + waggle, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#FFF5EE';
-            ctx.beginPath();
-            ctx.ellipse(x + 38, y + 28, 8, 5, 0.3 * Math.PI + waggle, 0, Math.PI * 2);
-            ctx.fill();
-            // Paws - stepping animation
-            const stepOffset = Math.sin(this.bouncePhase * 3) * 2;
-            ctx.fillStyle = '#FF8C42';
-            ctx.beginPath();
-            ctx.ellipse(x - 15, y + 38 + stepOffset, 8, 5, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.ellipse(x + 15, y + 38 - stepOffset, 8, 5, 0, 0, Math.PI * 2);
+            ctx.ellipse(rx, ry, 6, 4, 0, 0, Math.PI * 2);
             ctx.fill();
         }
         _drawSpeechBubble(ctx, x, y) {
