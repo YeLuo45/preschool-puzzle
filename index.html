@@ -580,6 +580,7 @@
             this.bouncePhase = 0;
             this.speechBubbleScale = 0;
             this.characterType = 0; // 0=fox, 1=rabbit, 2=cat
+            this.expressions = ['happy', 'sad', 'thinking', 'excited'];
         }
         show(message, emotion = 'happy', duration = 180) {
             this.messages.push({ message, emotion, duration, timer: duration });
@@ -722,14 +723,24 @@
             ctx.beginPath();
             ctx.ellipse(x + 22, y - 10, 6, 4, 0, 0, Math.PI * 2);
             ctx.fill();
-            // Tail
+            // Tail - wagging
+            const waggle = Math.sin(this.bouncePhase * 2) * 0.2;
             ctx.fillStyle = '#FF8C42';
             ctx.beginPath();
-            ctx.ellipse(x + 30, y + 25, 18, 10, 0.3 * Math.PI, 0, Math.PI * 2);
+            ctx.ellipse(x + 30, y + 25, 18, 10, 0.3 * Math.PI + waggle, 0, Math.PI * 2);
             ctx.fill();
             ctx.fillStyle = '#FFF5EE';
             ctx.beginPath();
-            ctx.ellipse(x + 38, y + 28, 8, 5, 0.3 * Math.PI, 0, Math.PI * 2);
+            ctx.ellipse(x + 38, y + 28, 8, 5, 0.3 * Math.PI + waggle, 0, Math.PI * 2);
+            ctx.fill();
+            // Paws - stepping animation
+            const stepOffset = Math.sin(this.bouncePhase * 3) * 2;
+            ctx.fillStyle = '#FF8C42';
+            ctx.beginPath();
+            ctx.ellipse(x - 15, y + 38 + stepOffset, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 15, y + 38 - stepOffset, 8, 5, 0, 0, Math.PI * 2);
             ctx.fill();
         }
         _drawSpeechBubble(ctx, x, y) {
