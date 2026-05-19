@@ -608,12 +608,66 @@
             this.shadowOffset = 5;
             this.audioContext = null;
             this.lastSoundTime = 0;
+            this.unlockedCharacters = [0]; // Fox is always unlocked
+            this.currentCharacterIndex = 0;
+            this.totalGamesPlayed = 0;
+            this.totalSuccesses = 0;
+            this.level = 1;
+            this.xp = 0;
+            this.xpToNextLevel = 50;
+            // Character unlock requirements
+            this.characterDefs = [
+                { id: 0, name: '小狐狸', unlockXP: 0, color: '#FF8C42' },
+                { id: 1, name: '小兔子', unlockXP: 100, color: '#F5F5F5' },
+                { id: 2, name: '小猫咪', unlockXP: 250, color: '#808080' },
+                { id: 3, name: '小熊猫', unlockXP: 500, color: '#2D2D2D' },
+                { id: 4, name: '小熊', unlockXP: 800, color: '#8B4513' },
+                { id: 5, name: '小老虎', unlockXP: 1200, color: '#FF6600' },
+                { id: 6, name: '小狮子', unlockXP: 1800, color: '#DAA520' },
+                { id: 7, name: '小青龙', unlockXP: 2500, color: '#228B22' }
+            ];
         }
         show(message, emotion = 'happy', duration = 180) {
             this.messages.push({ message, emotion, duration, timer: duration });
             if (!this.currentMessage) this._nextMessage();
-            // Play emotion sound
             this._playEmotionSound(emotion);
+        }
+        onGameComplete(success) {
+            this.totalGamesPlayed++;
+            if (success) {
+                this.totalSuccesses++;
+                this.addXP(10 + this.level * 2);
+            } else {
+                this.addXP(2);
+            }
+            // Check for unlocks
+            this._checkUnlocks();
+        }
+        addXP(amount) {
+            this.xp += amount;
+            while (this.xp >= this.xpToNextLevel) {
+                this.xp -= this.xpToNextLevel;
+                this.level++;
+                this.xpToNextLevel = Math.floor(this.xpToNextLevel * 1.3);
+                this.show(`升级啦！现在是 Lv.${this.level}！`, 'excited', 200);
+            }
+        }
+        _checkUnlocks() {
+            for (const char of this.characterDefs) {
+                if (!this.unlockedCharacters.includes(char.id) && this.xp >= char.unlockXP) {
+                    this.unlockedCharacters.push(char.id);
+                    this.show(`解锁新角色：${char.name}！`, 'excited', 250);
+                    break;
+                }
+            }
+        }
+        cycleCharacter() {
+            // Only cycle to unlocked characters
+            const unlocked = this.characterDefs.filter(c => this.unlockedCharacters.includes(c.id));
+            const currentIdx = unlocked.findIndex(c => c.id === this.characterDefs[this.characterType].id);
+            const nextIdx = (currentIdx + 1) % unlocked.length;
+            this.characterType = unlocked[nextIdx].id;
+            this.nextCharacter();
         }
         _playEmotionSound(emotion) {
             try {
@@ -827,7 +881,228 @@
             const t = this.characterType;
             if (t === 0) this._drawFox(ctx, x, y);
             else if (t === 1) this._drawRabbit(ctx, x, y);
-            else this._drawCat(ctx, x, y);
+            else if (t === 2) this._drawCat(ctx, x, y);
+            else if (t === 3) this._drawPanda(ctx, x, y);
+            else if (t === 4) this._drawBear(ctx, x, y);
+            else if (t === 5) this._drawTiger(ctx, x, y);
+            else if (t === 6) this._drawLion(ctx, x, y);
+            else if (t === 7) this._drawDragon(ctx, x, y);
+        }
+        _drawPanda(ctx, x, y) {
+            ctx.fillStyle = '#F5F5F5';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 20, 26, 20, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x, y - 12, 28, 26, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Panda ears (black)
+            ctx.fillStyle = '#2D2D2D';
+            ctx.beginPath();
+            ctx.arc(x - 20, y - 32, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 20, y - 32, 10, 0, Math.PI * 2);
+            ctx.fill();
+            // Panda eye patches
+            ctx.beginPath();
+            ctx.ellipse(x - 10, y - 15, 10, 8, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 10, y - 15, 10, 8, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 5, 14, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawEyes(ctx, x - 10, y - 15, x + 10, y - 15);
+            ctx.fillStyle = '#2D2D2D';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 2, 5, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawMouth(ctx, x, y + 3);
+            this._drawBlush(ctx, x - 18, y - 8, x + 18, y - 8);
+            ctx.fillStyle = '#2D2D2D';
+            ctx.beginPath();
+            ctx.ellipse(x - 8, y + 38, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 8, y + 38, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawBear(ctx, x, y) {
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 20, 28, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x, y - 12, 30, 28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Round ears
+            ctx.beginPath();
+            ctx.arc(x - 22, y - 32, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 22, y - 32, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#D2691E';
+            ctx.beginPath();
+            ctx.arc(x - 22, y - 32, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 22, y - 32, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#F5DEB3';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 2, 16, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawEyes(ctx, x - 10, y - 15, x + 10, y - 15);
+            ctx.fillStyle = '#3D2914';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 3, 5, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawMouth(ctx, x, y + 2);
+            this._drawBlush(ctx, x - 18, y - 8, x + 18, y - 8);
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.ellipse(x - 10, y + 38, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 10, y + 38, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawTiger(ctx, x, y) {
+            ctx.fillStyle = '#FF6600';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 20, 28, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x, y - 12, 30, 28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Tiger ears
+            ctx.beginPath();
+            ctx.arc(x - 22, y - 32, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 22, y - 32, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFB6C1';
+            ctx.beginPath();
+            ctx.arc(x - 22, y - 32, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 22, y - 32, 5, 0, Math.PI * 2);
+            ctx.fill();
+            // Tiger stripes
+            ctx.strokeStyle = '#8B0000';
+            ctx.lineWidth = 3;
+            for (let i = -2; i <= 2; i++) {
+                ctx.beginPath();
+                ctx.moveTo(x + i * 8 - 3, y - 25);
+                ctx.lineTo(x + i * 8 + 3, y - 15);
+                ctx.stroke();
+            }
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 2, 16, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawEyes(ctx, x - 10, y - 15, x + 10, y - 15);
+            ctx.fillStyle = '#3D2914';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 3, 5, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawMouth(ctx, x, y + 2);
+            this._drawBlush(ctx, x - 18, y - 8, x + 18, y - 8);
+            ctx.fillStyle = '#FF6600';
+            ctx.beginPath();
+            ctx.ellipse(x - 10, y + 38, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 10, y + 38, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawLion(ctx, x, y) {
+            // Mane
+            ctx.fillStyle = '#DAA520';
+            ctx.beginPath();
+            ctx.arc(x, y - 10, 38, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(x, y - 10, 32, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#F5DEB3';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 18, 24, 18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x, y - 12, 26, 24, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawEyes(ctx, x - 10, y - 18, x + 10, y - 18);
+            ctx.fillStyle = '#3D2914';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 5, 5, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawMouth(ctx, x, y);
+            this._drawBlush(ctx, x - 18, y - 10, x + 18, y - 10);
+            ctx.fillStyle = '#F5DEB3';
+            ctx.beginPath();
+            ctx.ellipse(x - 10, y + 36, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 10, y + 36, 7, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawDragon(ctx, x, y) {
+            // Dragon body with scales effect
+            ctx.fillStyle = '#228B22';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 20, 28, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x, y - 12, 30, 28, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Dragon horns
+            ctx.fillStyle = '#DAA520';
+            ctx.beginPath();
+            ctx.moveTo(x - 20, y - 35);
+            ctx.lineTo(x - 15, y - 55);
+            ctx.lineTo(x - 8, y - 38);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 20, y - 35);
+            ctx.lineTo(x + 15, y - 55);
+            ctx.lineTo(x + 8, y - 38);
+            ctx.fill();
+            // Dragon whiskers
+            ctx.strokeStyle = '#90EE90';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x - 15, y - 5);
+            ctx.quadraticCurveTo(x - 40, y - 10, x - 45, y - 20);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + 15, y - 5);
+            ctx.quadraticCurveTo(x + 40, y - 10, x + 45, y - 20);
+            ctx.stroke();
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 2, 16, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawEyes(ctx, x - 10, y - 15, x + 10, y - 15);
+            ctx.fillStyle = '#FF4500';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 3, 5, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            this._drawMouth(ctx, x, y + 2);
+            this._drawBlush(ctx, x - 18, y - 8, x + 18, y - 8);
+            ctx.fillStyle = '#228B22';
+            ctx.beginPath();
+            ctx.ellipse(x - 10, y + 38, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 10, y + 38, 8, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
         }
         _drawFox(ctx, x, y) {
             // Body
