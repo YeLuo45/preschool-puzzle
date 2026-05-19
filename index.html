@@ -568,13 +568,21 @@
         constructor() {
             this.messages = [];
             this.currentMessage = null;
-            this.currentEmotion = 'speak';
+            this.currentEmotion = 'happy';
             this.timer = 0;
             this.opacity = 0;
             this.targetOpacity = 0;
+            this.x = 70;
+            this.y = 480;
+            this.baseY = 480;
+            this.blinkTimer = 0;
+            this.isBlinking = false;
+            this.bouncePhase = 0;
+            this.speechBubbleScale = 0;
+            this.characterType = 0; // 0=fox, 1=rabbit, 2=cat
         }
-        show(message, emotion = 'speak', duration = 180) {
-            this.messages.push({ message, emotion, duration, timer: duration, opacity: 0 });
+        show(message, emotion = 'happy', duration = 180) {
+            this.messages.push({ message, emotion, duration, timer: duration });
             if (!this.currentMessage) this._nextMessage();
         }
         _nextMessage() {
@@ -585,47 +593,178 @@
                 this.timer = m.timer;
                 this.opacity = 0;
                 this.targetOpacity = 1;
+                this.speechBubbleScale = 0;
             } else {
                 this.currentMessage = null;
                 this.targetOpacity = 0;
             }
         }
         update(dt) {
+            this.bouncePhase += dt * 0.003;
+            this.blinkTimer += dt;
+            if (this.blinkTimer > 3000 + Math.random() * 2000) {
+                this.isBlinking = true;
+                this.blinkTimer = 0;
+            }
+            if (this.isBlinking && this.blinkTimer > 150) {
+                this.isBlinking = false;
+            }
             if (this.currentMessage) {
                 this.timer -= dt;
-                if (this.timer <= 0) {
-                    this._nextMessage();
-                } else {
-                    this.opacity = Math.min(1, this.opacity + 0.05);
-                }
+                this.opacity = Math.min(1, this.opacity + 0.08);
+                this.speechBubbleScale = Math.min(1, this.speechBubbleScale + 0.15);
+                if (this.timer <= 0) this._nextMessage();
             }
         }
         draw(ctx) {
-            if (!this.currentMessage || this.opacity <= 0) return;
+            const bounceY = Math.sin(this.bouncePhase) * 4;
+            const charY = this.y + bounceY;
             ctx.save();
-            ctx.globalAlpha = this.opacity;
+            // Draw character (fox)
+            this._drawFox(ctx, this.x, charY);
+            // Draw speech bubble
+            if (this.currentMessage && this.opacity > 0) {
+                ctx.globalAlpha = this.opacity;
+                this._drawSpeechBubble(ctx, this.x, charY - 80);
+            }
+            ctx.restore();
+        }
+        _drawFox(ctx, x, y) {
+            // Body
+            ctx.fillStyle = '#FF8C42';
+            ctx.beginPath();
+            ctx.ellipse(x, y + 20, 28, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Head
+            ctx.beginPath();
+            ctx.ellipse(x, y - 15, 32, 30, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Ears
+            ctx.beginPath();
+            ctx.moveTo(x - 25, y - 35);
+            ctx.lineTo(x - 15, y - 55);
+            ctx.lineTo(x - 5, y - 35);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 5, y - 35);
+            ctx.lineTo(x + 15, y - 55);
+            ctx.lineTo(x + 25, y - 35);
+            ctx.fill();
+            // Inner ears
+            ctx.fillStyle = '#FFD4B8';
+            ctx.beginPath();
+            ctx.moveTo(x - 20, y - 37);
+            ctx.lineTo(x - 15, y - 48);
+            ctx.lineTo(x - 10, y - 37);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y - 37);
+            ctx.lineTo(x + 15, y - 48);
+            ctx.lineTo(x + 20, y - 37);
+            ctx.fill();
+            // Face - white patch
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 5, 18, 16, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Eyes
+            if (this.isBlinking) {
+                ctx.strokeStyle = '#3D2914';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x - 18, y - 18);
+                ctx.lineTo(x - 8, y - 18);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(x + 8, y - 18);
+                ctx.lineTo(x + 18, y - 18);
+                ctx.stroke();
+            } else {
+                ctx.fillStyle = '#3D2914';
+                ctx.beginPath();
+                ctx.ellipse(x - 13, y - 18, 4, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(x + 13, y - 18, 4, 5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Eye shine
+                ctx.fillStyle = '#FFF';
+                ctx.beginPath();
+                ctx.arc(x - 11, y - 20, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x + 15, y - 20, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            // Nose
+            ctx.fillStyle = '#3D2914';
+            ctx.beginPath();
+            ctx.ellipse(x, y - 5, 5, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Mouth - expression based
+            ctx.strokeStyle = '#3D2914';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            if (this.currentEmotion === 'happy' || this.currentEmotion === 'excited') {
+                ctx.arc(x, y, 8, 0.1 * Math.PI, 0.9 * Math.PI);
+            } else if (this.currentEmotion === 'sad') {
+                ctx.arc(x, y + 8, 8, 1.1 * Math.PI, 1.9 * Math.PI);
+            } else {
+                ctx.moveTo(x - 6, y + 2);
+                ctx.lineTo(x + 6, y + 2);
+            }
+            ctx.stroke();
+            // Cheeks (blush)
+            ctx.fillStyle = 'rgba(255, 150, 150, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(x - 22, y - 10, 6, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(x + 22, y - 10, 6, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Tail
+            ctx.fillStyle = '#FF8C42';
+            ctx.beginPath();
+            ctx.ellipse(x + 30, y + 25, 18, 10, 0.3 * Math.PI, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFF5EE';
+            ctx.beginPath();
+            ctx.ellipse(x + 38, y + 28, 8, 5, 0.3 * Math.PI, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        _drawSpeechBubble(ctx, x, y) {
             const text = this.currentMessage;
-            ctx.font = '14px Arial';
-            const tw = ctx.measureText(text).width;
-            const bw = Math.min(tw + 30, 320);
-            const bh = 40;
-            const bx = 800 - bw - 10;
-            const by = 10;
+            ctx.font = '13px Arial';
+            const tw = Math.min(ctx.measureText(text).width, 260);
+            const bw = tw + 30;
+            const bh = 36;
+            const bx = x - bw / 2;
+            const by = y - bh / 2;
+            // Bubble
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.strokeStyle = '#FF8C42';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(bx, by, bw, bh, 10);
+            ctx.fill();
+            ctx.stroke();
+            // Tail
             ctx.fillStyle = 'rgba(255,255,255,0.95)';
             ctx.beginPath();
-            ctx.roundRect(bx, by, bw, bh, 8);
+            ctx.moveTo(x - 6, by + bh);
+            ctx.lineTo(x + 6, by + bh);
+            ctx.lineTo(x, by + bh + 10);
             ctx.fill();
-            ctx.strokeStyle = '#FFB347';
-            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x - 6, by + bh);
+            ctx.lineTo(x + 6, by + bh);
+            ctx.lineTo(x, by + bh + 10);
             ctx.stroke();
-            const icons = { speak: '💬', happy: '😊', think: '🤔', emotion: '❤️' };
-            ctx.font = '20px Arial';
-            ctx.fillText(icons[this.currentEmotion] || '💬', bx + 8, by + 26);
-            ctx.font = '14px Arial';
+            // Text
             ctx.fillStyle = '#5D4E37';
-            ctx.textAlign = 'left';
-            ctx.fillText(text, bx + 32, by + 26);
-            ctx.restore();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, x, by + bh / 2);
         }
         hide() {
             this.messages = [];
