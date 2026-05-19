@@ -581,7 +581,10 @@
             this.speechBubbleScale = 0;
             this.characterType = 0;
             this.showLevelUI = true;
-            this.uiExpanded = false; // 0=fox, 1=rabbit, 2=cat
+            this.uiExpanded = false;
+            this.achievements = this._getDefaultAchievements();
+            this.newAchievement = null;
+            this.newAchievementTimer = 0; // 0=fox, 1=rabbit, 2=cat
             this.expressions = ['happy', 'sad', 'thinking', 'excited'];
             this.switchTimer = 0;
             this.switchScale = 1;
@@ -631,6 +634,38 @@
                 { id: 7, name: '小青龙', unlockXP: 2500, color: '#228B22' }
             ];
         }
+        _getDefaultAchievements() {
+            return [
+                { id: 'first_win', name: '初次胜利', desc: '完成第一个游戏', icon: '⭐', unlocked: false },
+                { id: 'win_10', name: '小试牛刀', desc: '累计胜利10次', icon: '🌟', unlocked: false, progress: 0, target: 10 },
+                { id: 'win_50', name: '游戏达人', desc: '累计胜利50次', icon: '🌟🌟', unlocked: false, progress: 0, target: 50 },
+                { id: 'all_chars', name: '角色收藏家', desc: '解锁所有角色', icon: '🎭', unlocked: false },
+                { id: 'level_5', name: '五级选手', desc: '达到5级', icon: '🏆', unlocked: false },
+                { id: 'level_10', name: '十级大师', desc: '达到10级', icon: '🏆🏆', unlocked: false },
+                { id: 'combo_3', name: '三连成功', desc: '连续成功3次', icon: '🔥', unlocked: false },
+                { id: 'play_20', name: '勤奋玩家', desc: '累计游玩20次', icon: '🎮', unlocked: false, progress: 0, target: 20 }
+            ];
+        }
+        _checkAchievements() {
+            for (const ach of this.achievements) {
+                if (ach.unlocked) continue;
+                let shouldUnlock = false;
+                if (ach.id === 'first_win' && this.totalSuccesses >= 1) shouldUnlock = true;
+                if (ach.id === 'win_10') { ach.progress = this.totalSuccesses; if (ach.progress >= ach.target) shouldUnlock = true; }
+                if (ach.id === 'win_50') { ach.progress = this.totalSuccesses; if (ach.progress >= ach.target) shouldUnlock = true; }
+                if (ach.id === 'all_chars') { if (this.unlockedCharacters.length >= this.characterDefs.length) shouldUnlock = true; }
+                if (ach.id === 'level_5') { if (this.level >= 5) shouldUnlock = true; }
+                if (ach.id === 'level_10') { if (this.level >= 10) shouldUnlock = true; }
+                if (ach.id === 'play_20') { ach.progress = this.totalGamesPlayed; if (ach.progress >= ach.target) shouldUnlock = true; }
+                if (shouldUnlock) {
+                    ach.unlocked = true;
+                    this.newAchievement = ach;
+                    this.newAchievementTimer = 3000;
+                    this._saveProgress();
+                    break;
+                }
+            }
+        }
         _loadProgress() {
             try {
                 const saved = localStorage.getItem('preschool-helper-progress');
@@ -672,8 +707,8 @@
             } else {
                 this.addXP(2);
             }
-            // Check for unlocks
             this._checkUnlocks();
+            this._checkAchievements();
         }
         addXP(amount) {
             this.xp += amount;
@@ -858,6 +893,10 @@
             ctx.save();
             // Draw level UI at top
             this._drawLevelUI(ctx);
+            // Draw achievement popup
+            if (this.newAchievement && this.newAchievementTimer > 0) {
+                this._drawAchievementPopup(ctx);
+            }
             // Apply click reaction (jump)
             const jumpOffset = this.clickReaction * 10 * Math.sin(this.bouncePhase * 5);
             ctx.translate(this.x, charY - jumpOffset);
@@ -1091,6 +1130,34 @@
             ctx.beginPath();
             ctx.ellipse(x + 10, y + 36, 7, 5, 0, 0, Math.PI * 2);
             ctx.fill();
+        }
+        _drawAchievementPopup(ctx) {
+            const age = 1 - this.newAchievementTimer / 3000;
+            const scale = age < 0.2 ? age / 0.2 : 1;
+            const alpha = age > 0.8 ? (1 - age) / 0.2 : 1;
+            const popupY = 150 + (1 - scale) * 50;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(400, popupY);
+            ctx.scale(scale, scale);
+            // Background
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.beginPath();
+            ctx.roundRect(-120, -30, 240, 60, 15);
+            ctx.fill();
+            // Icon
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(this.newAchievement.icon, -80, 5);
+            // Text
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('成就解锁!', 0, -8);
+            ctx.fillStyle = '#FFF';
+            ctx.font = '12px Arial';
+            ctx.fillText(this.newAchievement.name, 0, 12);
+            ctx.restore();
+            this.newAchievementTimer -= 16;
         }
         _drawLevelUI(ctx) {
             if (!this.showLevelUI) return;
