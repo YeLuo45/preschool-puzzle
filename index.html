@@ -587,6 +587,9 @@
             this.clickReaction = 0;
             this.hoverTimer = 0;
             this.isHovered = false;
+            this.typingText = '';
+            this.typingIndex = 0;
+            this.typingSpeed = 30; // ms per character
         }
         show(message, emotion = 'happy', duration = 180) {
             this.messages.push({ message, emotion, duration, timer: duration });
@@ -601,8 +604,11 @@
                 this.opacity = 0;
                 this.targetOpacity = 1;
                 this.speechBubbleScale = 0;
+                this.typingText = '';
+                this.typingIndex = 0;
             } else {
                 this.currentMessage = null;
+                this.typingText = '';
                 this.targetOpacity = 0;
             }
         }
@@ -624,6 +630,11 @@
                 this.switchScale = 1;
             }
             if (this.currentMessage) {
+                // Typing effect
+                if (this.typingIndex < this.currentMessage.length) {
+                    this.typingIndex += dt / this.typingSpeed;
+                    this.typingText = this.currentMessage.substring(0, Math.floor(this.typingIndex));
+                }
                 this.timer -= dt;
                 this.opacity = Math.min(1, this.opacity + 0.08);
                 this.speechBubbleScale = Math.min(1, this.speechBubbleScale + 0.15);
@@ -956,7 +967,7 @@
         }
         _drawSpeechBubble(ctx, x, y) {
             if (!this.currentMessage) return;
-            const text = this.currentMessage;
+            const text = this.typingText;
             ctx.font = '13px Arial';
             const tw = Math.min(ctx.measureText(text).width, 260);
             const bw = tw + 30;
