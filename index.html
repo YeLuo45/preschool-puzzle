@@ -579,7 +579,9 @@
             this.isBlinking = false;
             this.bouncePhase = 0;
             this.speechBubbleScale = 0;
-            this.characterType = 0; // 0=fox, 1=rabbit, 2=cat
+            this.characterType = 0;
+            this.showLevelUI = true;
+            this.uiExpanded = false; // 0=fox, 1=rabbit, 2=cat
             this.expressions = ['happy', 'sad', 'thinking', 'excited'];
             this.switchTimer = 0;
             this.switchScale = 1;
@@ -815,6 +817,8 @@
         }
         onClick() {
             this.clickReaction = 1;
+            // Toggle level UI
+            this.uiExpanded = !this.uiExpanded;
             // Spawn celebration particles
             for (let i = 0; i < 8; i++) {
                 this.particles.push({
@@ -852,6 +856,8 @@
             const breathScale = 1 + Math.sin(this.breathPhase) * 0.02;
             const charY = this.y + bounceY;
             ctx.save();
+            // Draw level UI at top
+            this._drawLevelUI(ctx);
             // Apply click reaction (jump)
             const jumpOffset = this.clickReaction * 10 * Math.sin(this.bouncePhase * 5);
             ctx.translate(this.x, charY - jumpOffset);
@@ -1085,6 +1091,86 @@
             ctx.beginPath();
             ctx.ellipse(x + 10, y + 36, 7, 5, 0, 0, Math.PI * 2);
             ctx.fill();
+        }
+        _drawLevelUI(ctx) {
+            if (!this.showLevelUI) return;
+            const uiX = this.uiExpanded ? 10 : 10;
+            const uiY = 10;
+            const uiW = this.uiExpanded ? 180 : 100;
+            const uiH = this.uiExpanded ? 120 : 50;
+            // Background
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.beginPath();
+            ctx.roundRect(uiX, uiY, uiW, uiH, 10);
+            ctx.fill();
+            // Level badge
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(uiX + 25, uiY + 25, 18, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Lv', uiX + 25, uiY + 20);
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(this.level, uiX + 25, uiY + 33);
+            // XP bar
+            const barX = uiX + 50;
+            const barY = uiY + 15;
+            const barW = uiW - 60;
+            const barH = 12;
+            ctx.fillStyle = '#333';
+            ctx.beginPath();
+            ctx.roundRect(barX, barY, barW, barH, 6);
+            ctx.fill();
+            const xpProgress = Math.min(1, this.xp / this.xpToNextLevel);
+            const gradient = ctx.createLinearGradient(barX, barY, barX + barW * xpProgress, barY);
+            gradient.addColorStop(0, '#FFD700');
+            gradient.addColorStop(1, '#FFA500');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.roundRect(barX, barY, barW * xpProgress, barH, 6);
+            ctx.fill();
+            ctx.fillStyle = '#FFF';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${Math.floor(this.xp)}/${this.xpToNextLevel}`, barX + barW/2, barY + 10);
+            // Character icons row (when expanded)
+            if (this.uiExpanded) {
+                const iconY = uiY + 38;
+                const chars = this.characterDefs.slice(0, 6);
+                for (let i = 0; i < chars.length; i++) {
+                    const char = chars[i];
+                    const iconX = uiX + 15 + i * 28;
+                    const unlocked = this.unlockedCharacters.includes(char.id);
+                    // Icon bg
+                    ctx.fillStyle = unlocked ? char.color : '#444';
+                    ctx.beginPath();
+                    ctx.arc(iconX, iconY, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    if (!unlocked) {
+                        ctx.strokeStyle = '#666';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(iconX - 6, iconY - 6);
+                        ctx.lineTo(iconX + 6, iconY + 6);
+                        ctx.stroke();
+                    }
+                    // Lock icon for locked
+                    if (!unlocked) {
+                        ctx.fillStyle = '#FFF';
+                        ctx.font = '8px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('🔒', iconX, iconY + 3);
+                    }
+                }
+                // Stats text
+                ctx.fillStyle = '#AAA';
+                ctx.font = '10px Arial';
+                ctx.textAlign = 'left';
+                ctx.fillText(`胜: ${this.totalSuccesses}/${this.totalGamesPlayed}`, uiX + 10, uiY + 105);
+            }
+            ctx.textAlign = 'left';
         }
         _drawDragon(ctx, x, y) {
             // Dragon body with scales effect
