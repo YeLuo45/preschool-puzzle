@@ -590,6 +590,20 @@
             this.typingText = '';
             this.typingIndex = 0;
             this.typingSpeed = 30; // ms per character
+            this.sparkles = [];
+            this.idleTimer = 0;
+            this.lastEmotion = 'happy';
+            // Initialize sparkles
+            for (let i = 0; i < 5; i++) {
+                this.sparkles.push({
+                    x: Math.random() * 60 - 30,
+                    y: Math.random() * -60 - 20,
+                    size: Math.random() * 3 + 1,
+                    speed: Math.random() * 0.5 + 0.2,
+                    angle: Math.random() * Math.PI * 2,
+                    life: Math.random() * 2000
+                });
+            }
         }
         show(message, emotion = 'happy', duration = 180) {
             this.messages.push({ message, emotion, duration, timer: duration });
@@ -651,6 +665,23 @@
             // Decay click reaction
             if (this.clickReaction > 0) this.clickReaction -= dt * 0.005;
             if (this.hoverTimer > 0) this.hoverTimer -= dt;
+            // Update sparkles
+            for (const s of this.sparkles) {
+                s.life -= dt;
+                s.angle += s.speed * 0.02;
+                s.y += Math.sin(s.angle) * 0.3;
+                s.x += Math.cos(s.angle) * 0.2;
+                if (s.life <= 0) {
+                    s.x = Math.random() * 60 - 30;
+                    s.y = Math.random() * -60 - 20;
+                    s.life = Math.random() * 2000 + 1000;
+                }
+            }
+            // Track emotion changes for special effects
+            if (this.currentEmotion !== this.lastEmotion) {
+                if (this.currentEmotion === 'excited') this.spawnPraiseParticles();
+                this.lastEmotion = this.currentEmotion;
+            }
         }
         onClick() {
             this.clickReaction = 1;
@@ -704,6 +735,30 @@
                 ctx.fillStyle = p.color;
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+            // Draw sparkles around character
+            ctx.save();
+            for (const s of this.sparkles) {
+                const sx = this.x + s.x;
+                const sy = charY + s.y;
+                ctx.globalAlpha = Math.min(1, s.life / 500) * 0.6;
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                // Draw 4-point star
+                const spikes = 4;
+                const outerRadius = s.size;
+                const innerRadius = s.size * 0.4;
+                for (let i = 0; i < spikes * 2; i++) {
+                    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                    const angle = (i * Math.PI) / spikes - Math.PI / 2;
+                    const px = sx + Math.cos(angle) * radius;
+                    const py = sy + Math.sin(angle) * radius;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
                 ctx.fill();
             }
             ctx.restore();
