@@ -606,10 +606,51 @@
             }
             this.breathPhase = 0;
             this.shadowOffset = 5;
+            this.audioContext = null;
+            this.lastSoundTime = 0;
         }
         show(message, emotion = 'happy', duration = 180) {
             this.messages.push({ message, emotion, duration, timer: duration });
             if (!this.currentMessage) this._nextMessage();
+            // Play emotion sound
+            this._playEmotionSound(emotion);
+        }
+        _playEmotionSound(emotion) {
+            try {
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                const ctx = this.audioContext;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                const now = ctx.currentTime;
+                // Different tones for different emotions
+                if (emotion === 'happy' || emotion === 'excited') {
+                    osc.frequency.setValueAtTime(523.25, now); // C5
+                    osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.01, now + 0.3);
+                } else if (emotion === 'sad') {
+                    osc.frequency.setValueAtTime(392, now); // G4
+                    osc.frequency.setValueAtTime(329.63, now + 0.15); // E4
+                    gain.gain.setValueAtTime(0.08, now);
+                } else if (emotion === 'thinking') {
+                    osc.frequency.setValueAtTime(440, now); // A4
+                    osc.frequency.setValueAtTime(493.88, now + 0.1); // B4
+                    gain.gain.setValueAtTime(0.06, now);
+                } else {
+                    osc.frequency.setValueAtTime(500, now);
+                    gain.gain.setValueAtTime(0.05, now);
+                }
+                gain.gain.setValueAtTime(gain.gain.value || 0.05, now);
+                gain.gain.linearRampToValueAtTime(0, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } catch (e) {
+                // Audio not available, continue silently
+            }
         }
         _nextMessage() {
             if (this.messages.length > 0) {
