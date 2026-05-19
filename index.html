@@ -616,6 +616,8 @@
             this.xp = 0;
             this.xpToNextLevel = 50;
             // Character unlock requirements
+            // Load saved progress
+            this._loadProgress();
             this.characterDefs = [
                 { id: 0, name: '小狐狸', unlockXP: 0, color: '#FF8C42' },
                 { id: 1, name: '小兔子', unlockXP: 100, color: '#F5F5F5' },
@@ -626,6 +628,34 @@
                 { id: 6, name: '小狮子', unlockXP: 1800, color: '#DAA520' },
                 { id: 7, name: '小青龙', unlockXP: 2500, color: '#228B22' }
             ];
+        }
+        _loadProgress() {
+            try {
+                const saved = localStorage.getItem('preschool-helper-progress');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    this.xp = data.xp || 0;
+                    this.level = data.level || 1;
+                    this.unlockedCharacters = data.unlockedCharacters || [0];
+                    this.totalGamesPlayed = data.totalGamesPlayed || 0;
+                    this.totalSuccesses = data.totalSuccesses || 0;
+                    this.xpToNextLevel = data.xpToNextLevel || 50;
+                    this.characterType = data.characterType || 0;
+                }
+            } catch (e) {}
+        }
+        _saveProgress() {
+            try {
+                localStorage.setItem('preschool-helper-progress', JSON.stringify({
+                    xp: this.xp,
+                    level: this.level,
+                    unlockedCharacters: this.unlockedCharacters,
+                    totalGamesPlayed: this.totalGamesPlayed,
+                    totalSuccesses: this.totalSuccesses,
+                    xpToNextLevel: this.xpToNextLevel,
+                    characterType: this.characterType
+                }));
+            } catch (e) {}
         }
         show(message, emotion = 'happy', duration = 180) {
             this.messages.push({ message, emotion, duration, timer: duration });
@@ -645,6 +675,7 @@
         }
         addXP(amount) {
             this.xp += amount;
+            this._saveProgress();
             while (this.xp >= this.xpToNextLevel) {
                 this.xp -= this.xpToNextLevel;
                 this.level++;
@@ -656,12 +687,14 @@
             for (const char of this.characterDefs) {
                 if (!this.unlockedCharacters.includes(char.id) && this.xp >= char.unlockXP) {
                     this.unlockedCharacters.push(char.id);
+                    this._saveProgress();
                     this.show(`解锁新角色：${char.name}！`, 'excited', 250);
                     break;
                 }
             }
         }
         cycleCharacter() {
+            this._saveProgress();
             // Only cycle to unlocked characters
             const unlocked = this.characterDefs.filter(c => this.unlockedCharacters.includes(c.id));
             const currentIdx = unlocked.findIndex(c => c.id === this.characterDefs[this.characterType].id);
